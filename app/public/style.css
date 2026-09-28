@@ -1,0 +1,54 @@
+:root{--bg:#120c14;--card:#1e1422;--card2:#2a1c30;--fg:#f4e9f1;--mute:#a893a6;--acc:#e0245e;--acc2:#8a2be2;--ok:#2ecc71;--line:#3a2a40}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+a{color:#ff7aa8;text-decoration:none}
+header#top{display:flex;align-items:center;gap:.25rem;padding:.6rem 1rem;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+header .logo{font-weight:800;font-size:1.2rem;background:linear-gradient(90deg,var(--acc),var(--acc2));-webkit-background-clip:text;background-clip:text;color:transparent;margin-right:1rem}
+header nav{display:flex;gap:.2rem;flex-wrap:wrap;flex:1}
+header nav a{padding:.35rem .7rem;border-radius:999px;color:var(--mute)}
+header nav a.on{background:var(--card2);color:var(--fg)}
+.badge{background:var(--acc);color:#fff;border-radius:999px;padding:0 .45rem;font-size:.75rem;margin-left:.25rem}
+main{max-width:1000px;margin:0 auto;padding:1rem}
+h1,h2,h3{margin:.2rem 0 .8rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:1rem;margin-bottom:1rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem}
+.row{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+.spread{justify-content:space-between}
+button,.btn{background:linear-gradient(90deg,var(--acc),var(--acc2));color:#fff;border:0;border-radius:999px;padding:.55rem 1.1rem;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
+button.danger{background:#a11}
+button:disabled{opacity:.5;cursor:default}
+input,textarea,select{width:100%;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:.55rem .7rem;font:inherit}
+label{display:block;margin:.6rem 0 .2rem;color:var(--mute);font-size:.9rem}
+label.chk{display:flex;gap:.5rem;align-items:flex-start;color:var(--fg)}
+label.chk input{width:auto;margin-top:.3rem}
+.mute{color:var(--mute)}
+.err{color:#ff6b6b}
+.tag{display:inline-block;background:var(--card2);border-radius:999px;padding:.05rem .6rem;font-size:.8rem;margin-right:.3rem}
+.dot{display:inline-block;width:.6rem;height:.6rem;border-radius:50%;background:var(--ok);margin-right:.3rem}
+.ph{aspect-ratio:3/4;background:var(--card2) center/cover no-repeat;border-radius:12px}
+.swipe{max-width:380px;margin:0 auto}
+.swipe .ph{aspect-ratio:3/4;width:100%}
+.swipe .actions{display:flex;justify-content:center;gap:1.5rem;margin:1rem 0}
+.swipe .actions button{width:64px;height:64px;font-size:1.6rem;padding:0}
+.thumbs{display:flex;gap:.4rem;overflow:auto;margin-top:.5rem}
+.thumbs img{width:64px;height:84px;object-fit:cover;border-radius:8px;cursor:pointer}
+.chat{display:grid;grid-template-columns:260px 1fr;gap:1rem}
+@media(max-width:700px){.chat{grid-template-columns:1fr}}
+.convo{padding:.6rem;border-radius:10px;cursor:pointer;display:flex;justify-content:space-between}
+.convo:hover,.convo.on{background:var(--card2)}
+.msgs{height:50vh;overflow:auto;display:flex;flex-direction:column;gap:.4rem;padding:.4rem}
+.msg{max-width:75%;padding:.45rem .8rem;border-radius:14px;background:var(--card2);white-space:pre-wrap;word-break:break-word}
+.msg.me{align-self:flex-end;background:linear-gradient(90deg,var(--acc),var(--acc2))}
+#toast{position:fixed;left:50%;bottom:1rem;transform:translateX(-50%);background:#000c;padding:.6rem 1rem;border-radius:12px;display:none;z-index:20}
+.videos{position:relative;background:#000;border-radius:16px;overflow:hidden;aspect-ratio:16/9}
+.videos video{width:100%;height:100%;object-fit:cover}
+.videos video.self{position:absolute;right:.6rem;bottom:.6rem;width:24%;height:auto;border-radius:10px;border:2px solid #fff4}
+.timer{font-size:2rem;font-weight:800;font-variant-numeric:tabular-nums}
+.board{display:grid;grid-template-columns:repeat(10,1fr);gap:4px}
+.tile{position:relative;background:var(--card2);border-radius:6px;min-height:46px;font-size:.7rem;padding:2px 4px;border:1px solid var(--line)}
+.tile.goto{border-color:gold}.tile.skip{border-color:#e67e22}.tile.end{background:#3a1b3f}
+.tile .tok{position:absolute;right:2px;bottom:2px;display:flex;gap:2px}
+.tok i{width:14px;height:14px;border-radius:50%;display:block;border:2px solid #fff}
+.tok i.a{background:var(--acc)}.tok i.b{background:#3aa0ff}
+.bigtxt{font-size:1.4rem;font-weight:700}

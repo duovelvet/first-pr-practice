@@ -1,0 +1,227 @@
+{
+ "name": "Oca (plantilla)",
+ "tiles": [
+  {
+   "n": 1,
+   "type": "normal",
+   "text": "Un beso en la mejilla — (sustituye por tus casillas)"
+  },
+  {
+   "n": 2,
+   "type": "normal",
+   "text": "Cuenta una fantasía (solo si te apetece) — (sustituye por tus casillas)"
+  },
+  {
+   "n": 3,
+   "type": "normal",
+   "text": "Baile sensual de 30 segundos — (sustituye por tus casillas)"
+  },
+  {
+   "n": 4,
+   "type": "normal",
+   "text": "Un masaje de hombros de 1 minuto — (sustituye por tus casillas)"
+  },
+  {
+   "n": 5,
+   "type": "goto",
+   "to": 9,
+   "again": true,
+   "text": "Oca: salta a la siguiente y tira otra vez"
+  },
+  {
+   "n": 6,
+   "type": "goto",
+   "to": 12,
+   "again": false,
+   "text": "Puente: avanza a la casilla 12"
+  },
+  {
+   "n": 7,
+   "type": "normal",
+   "text": "Mirada fija 20 segundos sin reír — (sustituye por tus casillas)"
+  },
+  {
+   "n": 8,
+   "type": "normal",
+   "text": "Susurra algo al oído a tu pareja — (sustituye por tus casillas)"
+  },
+  {
+   "n": 9,
+   "type": "goto",
+   "to": 14,
+   "again": true,
+   "text": "Oca: salta a la siguiente y tira otra vez"
+  },
+  {
+   "n": 10,
+   "type": "normal",
+   "text": "Un beso en la mejilla — (sustituye por tus casillas)"
+  },
+  {
+   "n": 11,
+   "type": "normal",
+   "text": "Cuenta una fantasía (solo si te apetece) — (sustituye por tus casillas)"
+  },
+  {
+   "n": 12,
+   "type": "normal",
+   "text": "Baile sensual de 30 segundos — (sustituye por tus casillas)"
+  },
+  {
+   "n": 13,
+   "type": "normal",
+   "text": "Un masaje de hombros de 1 minuto — (sustituye por tus casillas)"
+  },
+  {
+   "n": 14,
+   "type": "goto",
+   "to": 18,
+   "again": true,
+   "text": "Oca: salta a la siguiente y tira otra vez"
+  },
+  {
+   "n": 15,
+   "type": "normal",
+   "text": "Confiesa tu mayor sorpresa en una cita — (sustituye por tus casillas)"
+  },
+  {
+   "n": 16,
+   "type": "normal",
+   "text": "Mirada fija 20 segundos sin reír — (sustituye por tus casillas)"
+  },
+  {
+   "n": 17,
+   "type": "normal",
+   "text": "Susurra algo al oído a tu pareja — (sustituye por tus casillas)"
+  },
+  {
+   "n": 18,
+   "type": "goto",
+   "to": 23,
+   "again": true,
+   "text": "Oca: salta a la siguiente y tira otra vez"
+  },
+  {
+   "n": 19,
+   "type": "skip",
+   "turns": 1,
+   "text": "Posada: pierdes un turno"
+  },
+  {
+   "n": 20,
+   "type": "normal",
+   "text": "Cuenta una fantasía (solo si te apetece) — (sustituye por tus casillas)"
+  },
+  {
+   "n": 21,
+   "type": "normal",
+   "text": "Baile sensual de 30 segundos — (sustituye por tus casillas)"
+  },
+  {
+   "n": 22,
+   "type": "normal",
+   "text": "Un masaje de hombros de 1 minuto — (sustituye por tus casillas)"
+  },
+  {
+   "n": 23,
+   "type": "goto",
+   "to": 27,
+   "again": true,
+   "text": "Oca: salta a la siguiente y tira otra vez"
+  },
+  {
+   "n": 24,
+   "type": "normal",
+   "text": "Confiesa tu mayor sorpresa en una cita — (sustituye por tus casillas)"
+  },
+  {
+   "n": 25,
+   "type": "normal",
+   "text": "Mirada fija 20 segundos sin reír — (sustituye por tus casillas)"
+  },
+  {
+   "n": 26,
+   "type": "normal",
+   "text": "Susurra algo al oído a tu pareja — (sustituye por tus casillas)"
+  },
+  {
+   "n": 27,
+   "type": "goto",
+   "to": 32,
+   "again": true,
+   "text": "Oca: salta a la siguiente y tira otra vez"
+  },
+  {
+   "n": 28,
+   "type": "normal",
+   "text": "Un beso en la mejilla — (sustituye por tus casillas)"
+  },
+  {
+   "n": 29,
+   "type": "normal",
+   "text": "Cuenta una fantasía (solo si te apetece) — (sustituye por tus casillas)"
+  },
+  {
+   "n": 30,
+   "type": "normal",
+   "text": "Baile sensual de 30 segundos — (sustituye por tus casillas)"
+  },
+  {
+   "n": 31,
+   "type": "skip",
+   "turns": 2,
+   "text": "Pozo: pierdes dos turnos"
+  },
+  {
+   "n": 32,
+   "type": "goto",
+   "to": 36,
+   "again": true,
+   "text": "Oca: salta a la siguiente y tira otra vez"
+  },
+  {
+   "n": 33,
+   "type": "normal",
+   "text": "Confiesa tu mayor sorpresa en una cita — (sustituye por tus casillas)"
+  },
+  {
+   "n": 34,
+   "type": "normal",
+   "text": "Mirada fija 20 segundos sin reír — (sustituye por tus casillas)"
+  },
+  {
+   "n": 35,
+   "type": "normal",
+   "text": "Susurra algo al oído a tu pareja — (sustituye por tus casillas)"
+  },
+  {
+   "n": 36,
+   "type": "goto",
+   "to": 40,
+   "again": true,
+   "text": "Oca: salta a la siguiente y tira otra vez"
+  },
+  {
+   "n": 37,
+   "type": "normal",
+   "text": "Un beso en la mejilla — (sustituye por tus casillas)"
+  },
+  {
+   "n": 38,
+   "type": "normal",
+   "text": "Cuenta una fantasía (solo si te apetece) — (sustituye por tus casillas)"
+  },
+  {
+   "n": 39,
+   "type": "goto",
+   "to": 1,
+   "again": false,
+   "text": "Laberinto: vuelves a la casilla 1"
+  },
+  {
+   "n": 40,
+   "type": "end",
+   "text": "¡Meta!"
+  }
+ ]
+}
