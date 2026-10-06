@@ -10,6 +10,7 @@ export function createSpeed({ getMe, send, config }) {
   let pc = null, local = null, pending = [], tick = null;
   // los <video> se crean una vez para que los re-renders no corten la imagen
   const remoteEl = h('video', { autoplay: true, playsInline: true });
+  const mixedBox = h('input', { type: 'checkbox' });
   const localEl = h('video', { class: 'self', autoplay: true, muted: true, playsInline: true });
 
   const render = () => {
@@ -25,8 +26,8 @@ export function createSpeed({ getMe, send, config }) {
         h('div', { class: 'card' },
           h('h2', {}, 'Buscando pareja de speed dating…'),
           h('p', { class: 'mute' }, getMe().kind === 'couple'
-            ? 'Te emparejaremos con un chico o una chica que esté conectado ahora.'
-            : 'Te emparejaremos con una pareja que esté conectada ahora.'),
+            ? 'Te emparejaremos con otra pareja que esté conectada ahora.'
+            : 'Te emparejaremos con ' + (getMe().kind === 'woman' ? 'un hombre' : 'una mujer') + ' que esté conectado ahora.'),
           h('button', { class: 'ghost', onclick: () => send({ t: 'queue:leave' }) }, 'Cancelar')),
       ];
     }
@@ -38,8 +39,10 @@ export function createSpeed({ getMe, send, config }) {
     return h('div', { class: 'card' },
       h('h2', {}, 'Speed dating por videollamada'),
       h('p', {}, `Rondas de ${Math.round(config.roundSeconds / 60 * 10) / 10} min. ` +
-        (me.kind === 'couple' ? 'Como pareja conocerás a chicos y chicas.' : 'Conocerás a parejas.') +
+        (me.kind === 'couple' ? 'Conocerás a otras parejas.' : me.kind === 'woman' ? 'Conocerás a hombres.' : 'Conocerás a mujeres.') +
         ' Al terminar, si los dos elegís seguir, la videollamada continúa y se desbloquean los juegos.'),
+      h('label', { class: 'chk' }, mixedBox,
+        me.kind === 'couple' ? 'Abrirme también a chicos y chicas (si ellos también lo activan)' : 'Abrirme también a parejas (si ellas también lo activan)'),
       me.premium
         ? h('button', { onclick: startQueue }, 'Entrar en la cola')
         : h('p', {}, 'Necesitas la suscripción premium. ', h('a', { href: '#/premium' }, 'Suscribirme por ' + config.price)),
@@ -52,7 +55,7 @@ export function createSpeed({ getMe, send, config }) {
     } catch {
       return toast('Necesitamos permiso de cámara y micrófono');
     }
-    send({ t: 'queue:join' });
+    send({ t: 'queue:join', mixed: mixedBox.checked });
   }
 
   function roomView() {

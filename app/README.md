@@ -19,7 +19,7 @@ Sin Stripe configurado, en desarrollo el botón «Suscribirme» activa una suscr
 | Mensajes | Chat 1‑a‑1 en tiempo real (WebSocket). Los hombres necesitan suscripción para escribir. |
 | Eventos | Cualquier usuario o el admin (marcados «Oficial») crea eventos; la dirección exacta solo la ven quienes se apuntan. |
 | En directo | Quién está conectado ahora y quién está en speed dating. |
-| Speed dating | Cola **parejas ↔ solos/solas**, ronda de vídeo (WebRTC) con temporizador, decisión «Seguir/Pasar». Si ambos siguen → match + el vídeo continúa. |
+| Speed dating | Por defecto empareja **pareja↔pareja y mujer↔hombre** (cruces pareja↔solo/a solo si ambos lo activan), ronda de vídeo (WebRTC) con temporizador, decisión «Seguir/Pasar». Si ambos siguen → match + el vídeo continúa. |
 | Juegos (tras «seguir» mutuo) | **Oca** (tablero editable en `server/board.json`) y **Espejo** (90 s uno actúa, 90 s el otro lo repite, luego se intercambian). Ambos pueden parar cuando quieran. |
 | Seguridad | Bloquear, reportar, panel admin (suspender cuentas), scrypt, cookies HttpOnly, CSP, límite de intentos. |
 | Pagos | Stripe Checkout + webhook con firma verificada (`server/billing.js`). |

@@ -137,8 +137,8 @@ test('speed dating pareja↔solo → seguir mutuo → oca y espejo', async () =>
   const single = await signup('sg@x.com', 'woman');
   const wc = await wsOf(couple.cookie);
   const wsg = await wsOf(single.cookie);
-  wc.sendJson({ t: 'queue:join' });
-  wsg.sendJson({ t: 'queue:join' });
+  wc.sendJson({ t: 'queue:join', mixed: true });
+  wsg.sendJson({ t: 'queue:join', mixed: true });
   const s1 = await wc.next((m) => m.t === 'room:start');
   const s2 = await wsg.next((m) => m.t === 'room:start');
   assert.equal(s1.peer.id, single.me.id);
@@ -193,8 +193,8 @@ test('si uno pasa no hay match y la sala se cierra', async () => {
   const single = await signup('sg2@x.com', 'woman');
   const wc = await wsOf(couple.cookie);
   const wsg = await wsOf(single.cookie);
-  wc.sendJson({ t: 'queue:join' });
-  wsg.sendJson({ t: 'queue:join' });
+  wc.sendJson({ t: 'queue:join', mixed: true });
+  wsg.sendJson({ t: 'queue:join', mixed: true });
   await wc.next((m) => m.t === 'room:start');
   await wc.next((m) => m.t === 'room:phase' && m.phase === 'decide');
   wc.sendJson({ t: 'round:decision', choice: 'continue' });
@@ -216,4 +216,36 @@ test('admin: moderación y baneo', async () => {
   assert.equal(reps.length, 1);
   await admin.call('POST', `/admin/ban/${troll.me.id}`);
   assert.equal((await troll.call('GET', '/me')).status, 401);
+});
+
+test('emparejamiento por defecto: pareja↔pareja y mujer↔hombre; los cruces solo si ambos lo piden', async () => {
+  const { compatible } = await import('../server/realtime.js');
+  const q = (kind, mixed = false) => ({ kind, mixed });
+  assert.equal(compatible(q('couple'), q('couple')), true);
+  assert.equal(compatible(q('woman'), q('man')), true);
+  assert.equal(compatible(q('woman'), q('woman')), false);
+  assert.equal(compatible(q('man'), q('man')), false);
+  assert.equal(compatible(q('couple'), q('woman')), false);
+  assert.equal(compatible(q('couple', true), q('man')), false);
+  assert.equal(compatible(q('couple', true), q('man', true)), true);
+
+  const c1 = await signup('pp1@x.com', 'couple');
+  const c2 = await signup('pp2@x.com', 'couple');
+  const w = await signup('mw@x.com', 'woman');
+  const m = await signup('mm@x.com', 'man');
+  await m.call('POST', '/billing/dev-activate');
+  const [w1, w2, ww, wm] = await Promise.all([c1, c2, w, m].map((u) => wsOf(u.cookie)));
+  // solo la mujer en cola: no se empareja con una pareja
+  ww.sendJson({ t: 'queue:join' });
+  w1.sendJson({ t: 'queue:join' });
+  await ww.next((x) => x.t === 'queue:joined');
+  await w1.next((x) => x.t === 'queue:joined');
+  await new Promise((r) => setTimeout(r, 300));
+  w2.sendJson({ t: 'queue:join' });
+  const a = await w1.next((x) => x.t === 'room:start');
+  assert.equal(a.peer.id, c2.me.id);
+  wm.sendJson({ t: 'queue:join' });
+  const b = await ww.next((x) => x.t === 'room:start');
+  assert.equal(b.peer.id, m.me.id);
+  [w1, w2, ww, wm].forEach((s) => s.close());
 });

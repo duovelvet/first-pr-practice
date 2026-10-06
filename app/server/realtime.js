@@ -12,20 +12,19 @@ const BOARD = JSON.parse(fs.readFileSync(new URL('./board.json', import.meta.url
 
 /** userId -> Set<ws> */
 const sockets = new Map();
-/** cola: parejas por un lado, solos/solas por el otro */
-const queues = { couple: [], single: [] };
+/** cola de espera: { id, mixed } */
+const queue = [];
 /** roomId -> room, userId -> room */
 const rooms = new Map();
 const userRoom = new Map();
 /** parejas ya emparejadas en esta sesión de servidor, para no repetir */
 const recent = new Set();
 
-const sideOf = (u) => (u.kind === 'couple' ? 'couple' : 'single');
 const pairKey = (a, b) => (a < b ? `${a}:${b}` : `${b}:${a}`);
 
 export const isOnline = (id) => sockets.has(id);
 export const onlineIds = () => [...sockets.keys()];
-export const inSpeedDating = (id) => userRoom.has(id) || queues.couple.includes(id) || queues.single.includes(id);
+export const inSpeedDating = (id) => userRoom.has(id) || queue.some((q) => q.id === id);
 
 export function pushTo(id, msg) {
   const set = sockets.get(id);
@@ -37,19 +36,30 @@ export function pushTo(id, msg) {
 const getUser = (id) => db.prepare('SELECT * FROM users WHERE id=?').get(id);
 
 function leaveQueue(id) {
-  for (const q of Object.values(queues)) {
-    const i = q.indexOf(id);
-    if (i >= 0) q.splice(i, 1);
-  }
+  const i = queue.findIndex((q) => q.id === id);
+  if (i >= 0) queue.splice(i, 1);
+}
+
+/**
+ * Por defecto: pareja↔pareja y mujer↔hombre.
+ * Solo si AMBOS han activado «abrir a cruces» se permite pareja↔solo/a.
+ */
+export function compatible(a, b) {
+  if (a.kind === 'couple' && b.kind === 'couple') return true;
+  if (a.kind !== 'couple' && b.kind !== 'couple') return a.kind !== b.kind;
+  return a.mixed && b.mixed;
 }
 
 function tryMatch() {
-  for (const cId of [...queues.couple]) {
-    const sId = queues.single.find((s) => !recent.has(pairKey(cId, s)) && !isBlockedEitherWay(cId, s));
-    if (sId == null) continue;
-    leaveQueue(cId);
-    leaveQueue(sId);
-    createRoom(cId, sId);
+  for (let i = 0; i < queue.length; i++) {
+    for (let j = i + 1; j < queue.length; j++) {
+      const a = queue[i], b = queue[j];
+      if (!compatible(a, b) || recent.has(pairKey(a.id, b.id)) || isBlockedEitherWay(a.id, b.id)) continue;
+      queue.splice(j, 1);
+      queue.splice(i, 1);
+      createRoom(a.id, b.id);
+      return tryMatch();
+    }
   }
 }
 
@@ -301,7 +311,7 @@ export function attachRealtime(server) {
         if (room) return;
         if (!hasPremiumAccess(user)) return pushTo(uid, { t: 'error', code: 'premium_required' });
         leaveQueue(uid);
-        queues[sideOf(user)].push(uid);
+        queue.push({ id: uid, kind: user.kind, mixed: m.mixed === true });
         pushTo(uid, { t: 'queue:joined' });
         return tryMatch();
       case 'queue:leave':
@@ -330,7 +340,6 @@ export function attachRealtime(server) {
 }
 
 export function _resetForTests() {
-  queues.couple.length = 0;
-  queues.single.length = 0;
+  queue.length = 0;
   recent.clear();
 }
