@@ -12,7 +12,26 @@ function showLogin() {
   $("login").classList.remove("hidden");
 }
 
+const ACTION_ES = { publish: "publicar", delete: "retirar", update: "actualizar" };
+
+async function renderRuns() {
+  const { runs = [] } = await chrome.storage.local.get("runs");
+  $("runsBox").classList.toggle("hidden", runs.length === 0);
+  const ul = $("runs");
+  ul.textContent = "";
+  for (const r of runs.slice(0, 5)) {
+    const li = document.createElement("li");
+    li.style.padding = "3px 0";
+    const when = new Date(r.t).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+    li.textContent = `${r.ok ? "✔" : "✖"} ${when} · ${r.marketplace} · ${ACTION_ES[r.action] || r.action}` +
+      (r.ok && r.via ? ` (${r.via})` : "") + (r.ok ? "" : ` — ${r.fatal ? "REVISAR: " : ""}${r.error}`);
+    li.style.color = r.ok ? "#166534" : r.fatal ? "#b91c1c" : "#92400e";
+    ul.appendChild(li);
+  }
+}
+
 async function refreshStatus() {
+  renderRuns();
   try {
     const rows = await ML.select("sync_queue?status=in.(pending,processing)&select=id,status");
     const pending = rows.filter((r) => r.status === "pending").length;

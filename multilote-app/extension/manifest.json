@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MultiLote",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Sincroniza tu cola de MultiLote con Wallapop, Vinted, Milanuncios y Todocolección.",
   "permissions": [
     "storage",
@@ -30,9 +30,31 @@
         "https://*.todocoleccion.net/*"
       ],
       "js": [
+        "page-hook.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://*.wallapop.com/*",
+        "https://*.vinted.es/*",
+        "https://*.milanuncios.com/*",
+        "https://*.todocoleccion.net/*"
+      ],
+      "js": [
+        "lib/bridge.js",
+        "lib/dom.js",
+        "lib/api-plan.js",
+        "adapters/_registry.js",
+        "adapters/wallapop.js",
+        "adapters/vinted.js",
+        "adapters/milanuncios.js",
+        "adapters/todocoleccion.js",
         "content.js"
       ],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "minimum_chrome_version": "111"
 }

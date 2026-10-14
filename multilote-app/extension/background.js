@@ -1,7 +1,11 @@
 // Service worker: consume sync_queue.
 //  1. cada minuto reclama tareas con la RPC claim_sync_jobs
 //  2. abre la pestaña (formulario de subida, o el anuncio a retirar) y deja que content.js actúe
-//  3. informa del resultado con complete_sync_job (éxito, o fallo con reintento/backoff en servidor)
+//  3. informa del resultado con complete_sync_job (éxito; fallo con reintento/backoff en servidor; o fallo
+//     DEFINITIVO si el resultado es ambiguo tras enviar una petición que crea algo: evita anuncios duplicados)
+//
+// Seguridad: los tokens de sesión de los marketplaces NUNCA pasan por aquí (se quedan en page-hook.js, dentro
+// de la página). Este worker solo maneja la sesión de MultiLote (Supabase) y datos de las tareas.
 importScripts("config.js", "api.js");
 
 const ALARM = "multilote-sync";
@@ -60,11 +64,12 @@ function isAllowedUrl(marketplace, url) {
 }
 
 // Resuelve la URL que hay que abrir según la acción. Lanza Error con un mensaje legible si no se puede.
+// Devuelve { url, externalUrl }: externalUrl (solo en delete) es el anuncio publicado, útil para el modo API.
 async function resolveJobUrl(job) {
   if (job.action === "publish") {
     const url = MULTILOTE_CONFIG.UPLOAD_URLS[job.marketplace];
     if (!url) throw new Error(`Marketplace desconocido: ${job.marketplace}`);
-    return url;
+    return { url, externalUrl: null };
   }
   if (job.action === "delete") {
     const [pub] = await ML.select(
@@ -76,14 +81,14 @@ async function resolveJobUrl(job) {
     if (!isAllowedUrl(job.marketplace, pub.external_url)) {
       throw new Error("URL del anuncio no válida para este marketplace");
     }
-    return pub.external_url;
+    return { url: pub.external_url, externalUrl: pub.external_url };
   }
   throw new Error(`Acción «${job.action}» aún no soportada por la extensión`);
 }
 
 async function startJob(job) {
   try {
-    const url = await resolveJobUrl(job);
+    const { url, externalUrl } = await resolveJobUrl(job);
 
     let listing = null;
     let photoUrls = [];
@@ -95,7 +100,7 @@ async function startJob(job) {
 
     const tab = await chrome.tabs.create({ url, active: false });
     const active = await getActive();
-    active[tab.id] = { job, listing, photoUrls };
+    active[tab.id] = { job, listing, photoUrls, externalUrl, mutating: false };
     await setActive(active);
   } catch (e) {
     await ML.rpc("complete_sync_job", {
@@ -106,7 +111,23 @@ async function startJob(job) {
   }
 }
 
-async function finishJob(tabId, { ok, externalUrl, error }) {
+// Registro corto de resultados (para el popup): permite ver qué hizo la extensión sin mirarla.
+async function logRun(entry, result) {
+  const { runs = [] } = await chrome.storage.local.get("runs");
+  runs.unshift({
+    t: Date.now(),
+    marketplace: entry.job.marketplace,
+    action: entry.job.action,
+    ok: !!result.ok,
+    via: result.via || null,
+    fatal: !!result.fatal,
+    error: result.ok ? null : String(result.error || "").slice(0, 200),
+  });
+  await chrome.storage.local.set({ runs: runs.slice(0, 20) });
+}
+
+async function finishJob(tabId, result) {
+  const { ok, externalUrl, error, fatal, code } = result;
   const active = await getActive();
   const entry = active[tabId];
   if (!entry) return;
@@ -118,17 +139,34 @@ async function finishJob(tabId, { ok, externalUrl, error }) {
       p_success: !!ok,
       p_external_url: externalUrl || null,
       p_error: ok ? null : error || "Error desconocido",
+      p_fatal: !ok && !!fatal,
     });
   } catch {
     /* si falla, claim_sync_jobs recupera la tarea al caducar el bloqueo */
   }
+  await logRun(entry, result).catch(() => {});
+  // Sin sesión en el marketplace no hay nada que hacer hasta que el usuario inicie sesión: avisamos.
+  if (!ok && code === "needs_login") {
+    await chrome.action.setBadgeText({ text: "!" });
+    await chrome.action.setBadgeBackgroundColor({ color: "#dc2626" });
+    await chrome.action.setTitle({ title: `MultiLote: inicia sesión en ${entry.job.marketplace} para continuar` });
+  }
   if (ok) chrome.tabs.remove(tabId).catch(() => {});
 }
 
-// Si el usuario cierra la pestaña antes de terminar, se cuenta como fallo (el servidor reintenta).
+// Si el usuario cierra la pestaña antes de terminar, se cuenta como fallo. Si era una publicación que ya había
+// empezado a modificar (fase «mutating»), el resultado es ambiguo y el fallo es definitivo (evita duplicados).
 chrome.tabs.onRemoved.addListener(async (tabId) => {
-  const active = await getActive();
-  if (active[tabId]) await finishJob(tabId, { ok: false, error: "Pestaña cerrada antes de terminar" });
+  const entry = (await getActive())[tabId];
+  if (!entry) return;
+  const ambiguous = entry.job.action === "publish" && entry.mutating;
+  await finishJob(tabId, {
+    ok: false,
+    fatal: ambiguous,
+    error: ambiguous
+      ? "Pestaña cerrada después de enviar la publicación: revisa si el anuncio existe"
+      : "Pestaña cerrada antes de terminar",
+  });
 });
 
 async function toDataUrl(url) {
@@ -158,7 +196,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           /* foto omitida */
         }
       }
-      sendResponse({ action: entry.job.action, marketplace: entry.job.marketplace, listing: entry.listing, photos });
+      sendResponse({
+        action: entry.job.action,
+        marketplace: entry.job.marketplace,
+        listing: entry.listing,
+        photos,
+        externalUrl: entry.externalUrl || null,
+      });
+    })();
+    return true;
+  }
+  if (msg.type === "job-phase" && sender.tab) {
+    // El content script avisa justo antes de enviar algo que crea/modifica datos en el marketplace.
+    (async () => {
+      const active = await getActive();
+      if (active[sender.tab.id] && msg.phase === "mutating") {
+        active[sender.tab.id].mutating = true;
+        await setActive(active);
+      }
+      sendResponse({ ok: true });
     })();
     return true;
   }
