@@ -1,9 +1,10 @@
-export type Marketplace = "wallapop" | "vinted" | "milanuncios";
+export type Marketplace = "wallapop" | "vinted" | "milanuncios" | "todocoleccion";
 
 export const MARKETPLACES: { id: Marketplace; name: string }[] = [
   { id: "wallapop", name: "Wallapop" },
   { id: "vinted", name: "Vinted" },
   { id: "milanuncios", name: "Milanuncios" },
+  { id: "todocoleccion", name: "Todocolección" },
 ];
 
 export type Listing = {

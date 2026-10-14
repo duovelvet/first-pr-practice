@@ -10,11 +10,14 @@ const MULTILOTE_CONFIG = {
     wallapop: ["wallapop.com"],
     vinted: ["vinted.es"],
     milanuncios: ["milanuncios.com"],
+    todocoleccion: ["todocoleccion.net"],
   },
   // URL donde se crea un anuncio nuevo en cada marketplace.
   UPLOAD_URLS: {
     wallapop: "https://es.wallapop.com/app/catalog/upload",
     vinted: "https://www.vinted.es/items/new",
     milanuncios: "https://www.milanuncios.com/publicar-anuncio/",
+    // PENDIENTE: URL real del formulario de «vender» de Todocolección (por confirmar al inspeccionarlo).
+    todocoleccion: "https://www.todocoleccion.net/",
   },
 };

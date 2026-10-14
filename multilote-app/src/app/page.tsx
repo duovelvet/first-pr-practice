@@ -4,7 +4,7 @@ import PlanCards from "@/components/PlanCards";
 const features = [
   {
     title: "Crea una vez, publica en todos",
-    text: "Sube fotos, título y precio una sola vez. La extensión publica en Wallapop, Vinted y Milanuncios por ti, sin que tengas que copiar nada.",
+    text: "Sube fotos, título y precio una sola vez. La extensión publica en Wallapop, Vinted, Milanuncios y Todocolección por ti, sin que tengas que copiar nada.",
   },
   {
     title: "Cola de tareas automática",
@@ -34,7 +34,7 @@ export default function Home() {
 
       <section className="mx-auto max-w-3xl px-6 py-20 text-center">
         <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl">
-          Publica en Wallapop, Vinted y Milanuncios en un clic
+          Publica en Wallapop, Vinted, Milanuncios y Todocolección en un clic
         </h1>
         <p className="mt-6 text-lg text-slate-600">
           El cross-listing hecho para España. Menos tiempo copiando anuncios, más tiempo vendiendo.

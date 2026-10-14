@@ -9,9 +9,19 @@ const SITE = location.hostname.includes("wallapop")
   ? "vinted"
   : location.hostname.includes("milanuncios")
   ? "milanuncios"
+  : location.hostname.includes("todocoleccion")
+  ? "todocoleccion"
   : null;
 
 const SELECTORS = {
+  // Placeholder genérico hasta inspeccionar el formulario real de Todocolección.
+  todocoleccion: {
+    title: 'input[name="title"], input#title',
+    description: 'textarea[name="description"], textarea#description',
+    price: 'input[name="price"], input#price',
+    photos: 'input[type="file"]',
+    submit: 'button[type="submit"]',
+  },
   wallapop: {
     title: 'input[name="title"], input#title',
     description: 'textarea[name="description"], textarea#description',
