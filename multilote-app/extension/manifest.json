@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "MultiLote",
+  "version": "0.1.0",
+  "description": "Publica tus artículos en Wallapop, Vinted y Milanuncios desde MultiLote.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://*.supabase.co/*",
+    "https://*.wallapop.com/*",
+    "https://*.vinted.es/*",
+    "https://*.milanuncios.com/*"
+  ],
+  "action": {
+    "default_title": "MultiLote",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.wallapop.com/*", "https://*.vinted.es/*", "https://*.milanuncios.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

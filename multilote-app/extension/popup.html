@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>MultiLote</title>
+    <style>
+      body { width: 340px; font: 14px system-ui, sans-serif; margin: 0; padding: 14px; color: #0f172a; }
+      h1 { font-size: 16px; margin: 0 0 12px; color: #1b46a3; }
+      input { width: 100%; box-sizing: border-box; padding: 8px; margin-bottom: 8px; border: 1px solid #cbd5e1; border-radius: 6px; }
+      button { padding: 6px 10px; border: 0; border-radius: 6px; background: #2158cc; color: #fff; cursor: pointer; font-size: 12px; }
+      button.secondary { background: #e2e8f0; color: #334155; }
+      .item { border-bottom: 1px solid #e2e8f0; padding: 8px 0; }
+      .item p { margin: 0 0 6px; }
+      .price { color: #64748b; font-size: 12px; }
+      .row { display: flex; gap: 6px; flex-wrap: wrap; }
+      .err { color: #dc2626; font-size: 12px; }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <h1>MultiLote</h1>
+
+    <form id="login" class="hidden">
+      <input id="email" type="email" placeholder="Correo" required />
+      <input id="password" type="password" placeholder="Contraseña" required />
+      <button type="submit">Entrar</button>
+      <p id="loginError" class="err"></p>
+    </form>
+
+    <div id="app" class="hidden">
+      <div class="row" style="justify-content: space-between; margin-bottom: 8px">
+        <a id="openWeb" href="#" target="_blank">Abrir panel</a>
+        <button id="logout" class="secondary">Salir</button>
+      </div>
+      <div id="list">Cargando…</div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
