@@ -63,6 +63,8 @@ Estrategia por tarea: **API** (solo si el adaptador tiene `api.verified = true` 
 
 ### Modo API: aprender y verificar (sin consola)
 
+**De punta a punta contra los sitios reales (en tu máquina):** `npm run learn:real -- --yes` abre Chromium con la extensión y un perfil persistente (`~/.multilote-chrome`); inicias sesión una vez en cada marketplace (queda guardada en ese perfil) y la herramienta ejecuta «Aprender solo y verificar» en cada uno, esperando el resultado y escribiendo `learn-real-report.json` (sin secretos). El `verified` resultante vive en el `chrome.storage` de ese perfil, que es donde se gana; no se escribe en los adaptadores del repositorio. Crea y borra anuncios reales de prueba, de ahí el `--yes`. Sin probar todavía contra los sitios reales.
+
 **Atajo automático:** popup → Modo API → **Aprender solo y verificar**. La extensión abre el sitio, sube ella misma un anuncio de prueba (`MLTEST-…`, con su motor DOM, rellenando por heurísticas de nombre/placeholder y siguiendo un enlace «vender» si hace falta), lo borra, deduce el perfil y lanza la autoprueba por API. Crea y borra anuncios **reales** en tu cuenta (el popup pide confirmación). Si algo no cuadra (sin formulario, sesión sin iniciar, rechazo…) se detiene con un mensaje y avisa si quedó algún anuncio de prueba. La aceptación de las constantes copiadas (categoría, envío…) sigue siendo manual a propósito. El modo manual de abajo queda como alternativa.
 
 Está **desactivado** en todos los adaptadores del repositorio (`api.verified = false`): los endpoints reales no se conocen y no se adivinan. En su lugar, cada instalación los **aprende** y los **verifica** ella sola:

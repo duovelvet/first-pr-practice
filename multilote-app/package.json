@@ -11,7 +11,8 @@
     "build:inspector": "terser extension/tools/inspect-dom.js --compress passes=2 --mangle --format ascii_only=true,comments=false -o extension/tools/dist/inspect-dom.min.js",
     "test:e2e": "node test/e2e/run.js",
     "test:e2e:learn": "node test/e2e/learn.js",
-    "test:unit": "node test/synth.test.js"
+    "test:unit": "node test/synth.test.js",
+    "learn:real": "node tools/learn-real.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
