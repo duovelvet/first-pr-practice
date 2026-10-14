@@ -43,6 +43,11 @@ Panel web ── INSERT ──▶ sync_queue ◀── claim_sync_jobs() ── 
 - Revisar los términos de uso de cada marketplace respecto a la automatización.
 - Iconos de la extensión y portal de cliente de Stripe (cancelar/cambiar plan).
 
-## Ajustar selectores de un marketplace
+## Ajustar la extensión a un marketplace (inspector)
 
-`extension/tools/inspect-dom.js` resume los controles de una página (sin valores de campos, ni datos personales). Ábrela en Chrome con tu sesión, F12 → Console → pega el archivo → pega el resultado (queda en el portapapeles) en el chat. Capturas necesarias por marketplace: formulario de subida (en cada paso del asistente), vista del anuncio propio, diálogo de confirmación de eliminar y página resultante tras eliminar.
+`extension/tools/inspect-dom.js` es una herramienta de desarrollo (no va en la extensión). Pegada en F12 → Console de la página del marketplace con tu sesión iniciada, registra a la vez:
+
+1. las peticiones POST/PUT/PATCH/DELETE que dispara la página (URL, método, nombres de cabeceras, forma de los cuerpos enviados y recibidos), y
+2. un resumen del DOM (campos, botones, diálogos).
+
+Haz la prueba a mano (subir y borrar un producto de prueba, sin recargar) y ejecuta `dump()`: copia todo al portapapeles. Se anonimiza en el propio navegador: sin tokens, cookies, Authorization (solo «Bearer <redacted>»), emails/teléfonos/ubicación; los ids se sustituyen por etiquetas `ID#n` que permiten ver qué id devuelto al crear aparece luego en la URL del borrado. `mlGet(true)` registra también los GET propios; `mlClear()` borra el registro.
