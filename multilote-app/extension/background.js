@@ -1,6 +1,6 @@
 // Service worker: consume sync_queue.
 //  1. cada minuto reclama tareas con la RPC claim_sync_jobs
-//  2. abre la pestaña de subida del marketplace y deja que content.js rellene y publique
+//  2. abre la pestaña (formulario de subida, o el anuncio a retirar) y deja que content.js actúe
 //  3. informa del resultado con complete_sync_job (éxito, o fallo con reintento/backoff en servidor)
 importScripts("config.js", "api.js");
 
@@ -47,15 +47,51 @@ async function runSync() {
   }
 }
 
-async function startJob(job) {
+function isAllowedUrl(marketplace, url) {
   try {
-    if (job.action !== "publish") throw new Error(`Acción «${job.action}» aún no soportada por la extensión`);
+    const u = new URL(url);
+    return (
+      u.protocol === "https:" &&
+      (MULTILOTE_CONFIG.ALLOWED_HOSTS[marketplace] || []).some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`))
+    );
+  } catch {
+    return false;
+  }
+}
+
+// Resuelve la URL que hay que abrir según la acción. Lanza Error con un mensaje legible si no se puede.
+async function resolveJobUrl(job) {
+  if (job.action === "publish") {
     const url = MULTILOTE_CONFIG.UPLOAD_URLS[job.marketplace];
     if (!url) throw new Error(`Marketplace desconocido: ${job.marketplace}`);
+    return url;
+  }
+  if (job.action === "delete") {
+    const [pub] = await ML.select(
+      `publications?listing_id=eq.${job.listing_id}&marketplace=eq.${job.marketplace}&select=external_url`
+    );
+    if (!pub?.external_url) {
+      throw new Error("No hay URL del anuncio guardada: retíralo a mano en el marketplace");
+    }
+    if (!isAllowedUrl(job.marketplace, pub.external_url)) {
+      throw new Error("URL del anuncio no válida para este marketplace");
+    }
+    return pub.external_url;
+  }
+  throw new Error(`Acción «${job.action}» aún no soportada por la extensión`);
+}
 
-    const [listing] = await ML.select(`listings?id=eq.${job.listing_id}&select=*`);
-    if (!listing) throw new Error("Artículo no encontrado");
-    const photoUrls = await ML.signedPhotoUrls(listing.photos || []);
+async function startJob(job) {
+  try {
+    const url = await resolveJobUrl(job);
+
+    let listing = null;
+    let photoUrls = [];
+    if (job.action === "publish") {
+      [listing] = await ML.select(`listings?id=eq.${job.listing_id}&select=*`);
+      if (!listing) throw new Error("Artículo no encontrado");
+      photoUrls = await ML.signedPhotoUrls(listing.photos || []);
+    }
 
     const tab = await chrome.tabs.create({ url, active: false });
     const active = await getActive();
@@ -122,7 +158,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           /* foto omitida */
         }
       }
-      sendResponse({ marketplace: entry.job.marketplace, listing: entry.listing, photos });
+      sendResponse({ action: entry.job.action, marketplace: entry.job.marketplace, listing: entry.listing, photos });
     })();
     return true;
   }

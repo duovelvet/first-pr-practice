@@ -36,7 +36,15 @@ export default async function DashboardPage() {
               <li key={l.id}>
                 <Link href={`/dashboard/${l.id}`} className="flex items-center justify-between gap-4 p-4 hover:bg-slate-50">
                   <div>
-                    <p className="font-medium">{l.title}</p>
+                    <p className="font-medium">
+                      {l.title}
+                      {l.status === "sold" && (
+                        <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">Vendido</span>
+                      )}
+                      {l.status === "archived" && (
+                        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">Retirado</span>
+                      )}
+                    </p>
                     <p className="text-sm text-slate-500">{Number(l.price).toFixed(2)} €</p>
                   </div>
                   <div className="flex gap-1.5">

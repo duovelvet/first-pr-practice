@@ -40,7 +40,7 @@ export default async function ListingPage({ params }: { params: { id: string } }
         Pulsa publicar y la extensión de Chrome resolverá la cola en segundo plano. Mantén Chrome abierto con la sesión
         iniciada en cada marketplace.
       </p>
-      <SyncManager listingId={l.id} publications={(pubs as Publication[]) ?? []} jobs={(jobs as SyncJob[]) ?? []} />
+      <SyncManager listingId={l.id} listingStatus={l.status} publications={(pubs as Publication[]) ?? []} jobs={(jobs as SyncJob[]) ?? []} />
     </>
   );
 }
