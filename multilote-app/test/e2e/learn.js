@@ -74,7 +74,7 @@ const slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-
 // ---------------------------------------------------------------------------------------------------------------
 // «Wallapop» (API JSON)
 // ---------------------------------------------------------------------------------------------------------------
-const W = { pics: new Set(), items: new Map(), needNewField: false, log: [] };
+const W = { pics: new Set(), items: new Map(), needNewField: false, noForm: false, log: [] };
 const APIH = JSON.stringify({ Authorization: `Bearer ${TOKEN}`, "X-DeviceOS": "0" });
 
 // Vista del anuncio, compartida por la SPA (tras publicar, sin recargar) y por la carga directa de /item/<slug>.
@@ -137,6 +137,7 @@ function wallapop(req, res, raw) {
     if (req.method === "DELETE" && del) return W.items.delete(del[1]) ? send(204, cors) : send(404, J, "{}");
     return send(404, J, "{}");
   }
+  if (W.noForm && u.pathname.startsWith("/app/catalog/upload")) return send(200, { "content-type": "text/html; charset=utf-8" }, "<html><body><h1>Sitio rediseñado</h1></body></html>");
   if (u.pathname.startsWith("/app/catalog/upload")) return send(200, { "content-type": "text/html; charset=utf-8" }, wPageUpload());
   const it = /^\/item\/(.+)$/.exec(u.pathname);
   if (it) return send(200, { "content-type": "text/html; charset=utf-8" }, wPageItem(it[1].split("-").pop()));
@@ -189,7 +190,7 @@ function todocoleccion(req, res, raw) {
     if (!T.lotes.delete(del[1])) return html(404, "No existe");
     return redirect("/mis-lotes");
   }
-  html(200, "<h1>Mis lotes</h1>");
+  html(200, '<h1>Mis lotes</h1><nav><a href="/ayuda">Ayuda</a> <a href="/vender">Vender un lote</a></nav>');
 }
 
 const mk = https.createServer({ key: fs.readFileSync(path.join(TMP, "key.pem")), cert: fs.readFileSync(path.join(TMP, "cert.pem")) }, (req, res) => {
@@ -383,6 +384,62 @@ const until = async (fn, ms = 60000, step = 250) => { const t0 = Date.now(); whi
 
   o = await runJob("B4. Cola: retirar POR API (formulario de borrado con su CSRF)", "todocoleccion", "delete", o.done?.p_external_url);
   check("éxito vía API y el lote ya no existe", o.done?.p_success === true && o.run?.via === "api" && !T.lotes.has(lote?.[0]), JSON.stringify(o.run));
+
+  // ---------------------------------------------------------------------------------------------------------
+  // E. APRENDIZAJE AUTOMÁTICO: sin que nadie toque el sitio, la extensión sube y borra el anuncio de prueba,
+  // deduce el perfil y lo verifica por API. Se parte de cero (sin perfil) en los dos marketplaces.
+  const autoLast = (mk) => sw.evaluate((m) => chrome.storage.local.get("autoLast").then((x) => (x.autoLast || {})[m] || null), mk);
+  const autoRun = async (mk, verify = true) => {
+    await sw.evaluate((m) => MLProfiles.update(m, () => null), mk);
+    const rep = await sw.evaluate(([m, v]) => startAutoLearn(m, v), [mk, verify]);
+    check(`[${mk}] el aprendizaje automático arrancó`, rep.started === true, JSON.stringify(rep));
+    const last = await until(() => autoLast(mk), 90000);
+    let pr = await profile(mk);
+    if (verify && last?.ok) pr = await until(async () => { const x = await profile(mk); return x?.lastSelftest ? x : null; }, 60000);
+    await closeTabs();
+    return { last, pr };
+  };
+
+  console.log("\n▶ E1. Wallapop: aprender solo + verificar, sin tocar nada");
+  let itemsN = W.items.size;
+  let e = await autoRun("wallapop");
+  check("aprendió y borró su anuncio de prueba (sin residuos)", e.last?.ok === true && W.items.size === itemsN, JSON.stringify({ last: e.last, n: [W.items.size, itemsN] }));
+  const aC = e.pr?.api?.publish?.steps?.find((x) => x.name === "crear");
+  check("mismo esquema que con grabación manual (plantillas, fotos, borrado)", aC?.body?.value?.title === "{{title}}" && aC.body.value.sale_price.amount === "{{price}}" && e.pr.api.publish.photos === true && e.pr.api.delete?.steps?.[0]?.url.endsWith("/api/v3/items/{{id}}"), JSON.stringify(aC?.body));
+  check("verificado por API sin intervención y ligado al hash", e.pr?.status === "verified" && e.pr.verifiedHash === e.pr.hash && e.pr.lastSelftest?.ok === true, JSON.stringify(e.pr?.lastSelftest));
+  check("constantes copiadas SIN consentimiento (hay que aceptarlas a mano)", (e.pr?.api?.publish?.bakedFields || []).length > 0 && !e.pr.consent?.baked);
+  check("sin secretos en el perfil", !JSON.stringify(e.pr).includes(TOKEN));
+  const rec0 = await sw.evaluate(() => chrome.storage.session.get(["rec", "auto"]));
+  check("la grabación quedó cerrada", !rec0.rec && !rec0.auto, JSON.stringify(rec0));
+  o = await runJob("E1b. Perfil aprendido solo, sin aceptar constantes: publicar", "wallapop", "publish");
+  check("sin consentimiento sigue publicando por DOM", o.done?.p_success === true && o.run?.via === "dom", JSON.stringify(o.run));
+
+  console.log("\n▶ E2. Todocolección (formularios clásicos): encuentra «vender» sola, aprende y verifica");
+  const lotesN = T.lotes.size;
+  e = await autoRun("todocoleccion");
+  check("aprendió y borró su lote de prueba (sin residuos)", e.last?.ok === true && T.lotes.size === lotesN, JSON.stringify({ last: e.last, n: [T.lotes.size, lotesN] }));
+  const aT = e.pr?.api?.publish?.steps?.[0];
+  check("siguió el enlace «Vender» y aprendió la URL real del formulario", e.pr?.uploadUrl === "https://www.todocoleccion.net/vender", e.pr?.uploadUrl);
+  check("multipart con plantillas + CSRF de la página + id de la URL", aT?.body?.kind === "form" && aT.body.fields.titulo === "{{title}}" && aT.body.fields.csrf_token === "{{csrf}}" && aT.extract?.id?.fromUrl && e.pr.api.publish.urlTemplate === "https://www.todocoleccion.net/lote/{{id}}", JSON.stringify(aT));
+  check("retirada: POST urlencoded con CSRF", e.pr?.api?.delete?.steps?.[0]?.url === "https://www.todocoleccion.net/lote/{{id}}/eliminar" && e.pr.api.delete.steps[0].body.kind === "urlencoded", JSON.stringify(e.pr?.api?.delete));
+  check("verificado por API", e.pr?.status === "verified" && e.pr.lastSelftest?.ok === true, JSON.stringify(e.pr?.lastSelftest));
+  check("el token CSRF no quedó en el perfil", !/csrf-[a-z0-9]{6,}/.test(JSON.stringify(e.pr)));
+  await sw.evaluate(() => MLProfiles.update("todocoleccion", (x) => ({ ...x, consent: { baked: true } })));
+  o = await runJob("E2b. Cola: publicar y retirar POR API con el perfil aprendido solo", "todocoleccion", "publish");
+  const loteE = [...T.lotes.entries()].pop();
+  check("publica por API", o.done?.p_success === true && o.run?.via === "api" && loteE?.[1].titulo === "Producto prueba", JSON.stringify(o.run));
+  o = await runJob("E2c. retirar", "todocoleccion", "delete", o.done?.p_external_url);
+  check("retira por API", o.done?.p_success === true && o.run?.via === "api" && !T.lotes.has(loteE?.[0]), JSON.stringify(o.run));
+
+  console.log("\n▶ E3. El sitio no tiene formulario reconocible: falla claro, sin inventar nada");
+  W.noForm = true;
+  itemsN = W.items.size;
+  e = await autoRun("wallapop", false);
+  W.noForm = false;
+  check("error claro y sin anuncio huérfano", e.last?.ok === false && !e.last.orphan && /formulario/i.test(e.last.error || "") && W.items.size === itemsN, JSON.stringify(e.last));
+  check("no se guardó ningún perfil", e.pr === null);
+  const rec1 = await sw.evaluate(() => chrome.storage.session.get(["rec", "auto"]));
+  check("la grabación quedó cerrada tras el fallo", !rec1.rec && !rec1.auto, JSON.stringify(rec1));
 
   // ---------------------------------------------------------------------------------------------------------
   console.log("\n▶ D. Seguridad");

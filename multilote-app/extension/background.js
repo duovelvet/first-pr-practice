@@ -116,7 +116,7 @@ async function startJob(job) {
 
     const tab = await chrome.tabs.create({ url, active: false });
     const active = await getActive();
-    active[tab.id] = { job, listing, photoUrls, externalUrl, mutating: false };
+    active[tab.id] = { job, listing, photoUrls, externalUrl, mutating: false, startUrl: url };
     await setActive(active);
   } catch (e) {
     await ML.rpc("complete_sync_job", {
@@ -148,6 +148,7 @@ async function finishJob(tabId, result) {
   const entry = active[tabId];
   if (!entry) return;
   if (entry.selftest) return finishSelftest(tabId, entry, result);
+  if (entry.autolearn) return finishAutoLearn(tabId, entry, result);
   delete active[tabId];
   await setActive(active);
   try {
@@ -176,6 +177,7 @@ async function finishJob(tabId, result) {
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   const entry = (await getActive())[tabId];
   if (!entry) return;
+  if (entry.autolearn) return discardAutoLearn(tabId, entry, "Pestaña cerrada durante el aprendizaje automático");
   if (entry.selftest) {
     const active = await getActive();
     delete active[tabId];
@@ -209,15 +211,102 @@ async function toDataUrl(url) {
 let recChain = Promise.resolve();
 const serial = (fn) => (recChain = recChain.then(fn, fn)); // lecturas-modificaciones de la grabación, en orden
 
-async function startRecording(marketplace) {
-  const url = MULTILOTE_CONFIG.UPLOAD_URLS[marketplace];
+async function beginRec(marketplace) {
+  const url = (await uploadUrlFor(marketplace)) || MULTILOTE_CONFIG.UPLOAD_URLS[marketplace];
   if (!url) throw new Error(`Marketplace desconocido: ${marketplace}`);
+  const old = (await chrome.storage.session.get("rec")).rec;
+  if (old && Date.now() - old.startedAt < 30 * 60 * 1000) throw new Error("Ya hay un aprendizaje en curso: termínalo o espera a que acabe");
   const n = Math.floor(1000 + Math.random() * 9000);
   const marker = `MLTEST-${n}`;
   const sentinels = { marker, title: marker, description: `${marker} descripcion de prueba`, price: "7.77" };
   await chrome.storage.session.set({ rec: { marketplace, sentinels, startedAt: Date.now() }, recCalls: [], recUrls: [] });
+  return { url, sentinels };
+}
+
+async function startRecording(marketplace) {
+  const { url, sentinels } = await beginRec(marketplace);
   await chrome.tabs.create({ url, active: true });
   return { sentinels };
+}
+
+// Aprendizaje AUTOMÁTICO: graba mientras la propia extensión sube y borra un anuncio de prueba (content.js `autolearn`),
+// deduce el perfil y, con verify, lo verifica por API. No hace falta tocar nada. Crea y borra un anuncio REAL en la
+// cuenta del usuario (lo aceptó al pulsar el botón); si algo falla a mitad, el popup indica si quedó alguno.
+async function startAutoLearn(marketplace, verify) {
+  const { url, sentinels } = await beginRec(marketplace);
+  try {
+    const listing = { title: sentinels.title, description: sentinels.description, price: Number(sentinels.price), category: "", brand: "", size: "", condition: "" };
+    const photo = (await latestPhotoDataUrl()) || TINY_JPEG;
+    const tab = await chrome.tabs.create({ url, active: false });
+    const active = await getActive();
+    active[tab.id] = { autolearn: true, verify: !!verify, phase: "publish", marketplace, listing, photoDataUrls: [photo], job: { id: "autolearn", action: "autolearn", marketplace }, mutating: false, startUrl: url };
+    await setActive(active);
+    await chrome.storage.session.set({ auto: { marketplace, stage: "publicando el anuncio de prueba" } });
+    await setAutoLast(marketplace, null);
+    return { started: true };
+  } catch (e) {
+    await chrome.storage.session.remove(["rec", "recCalls", "recUrls", "auto"]);
+    throw e;
+  }
+}
+
+async function setAutoLast(marketplace, value) {
+  const { autoLast = {} } = await chrome.storage.local.get("autoLast");
+  if (value) autoLast[marketplace] = value;
+  else delete autoLast[marketplace];
+  await chrome.storage.local.set({ autoLast });
+}
+
+async function finishAutoLearn(tabId, entry, r) {
+  const mk = entry.marketplace;
+  const closeAuto = async (res) => {
+    const a = await getActive();
+    delete a[tabId];
+    await setActive(a);
+    await chrome.storage.session.remove(["auto", "rec", "recCalls", "recUrls"]);
+    await setAutoLast(mk, { ...res, at: Date.now() });
+    chrome.tabs.remove(tabId).catch(() => {});
+  };
+  if (entry.phase === "publish") {
+    if (r.ok && r.externalUrl) {
+      const a = await getActive();
+      entry.phase = "delete";
+      entry.externalUrl = r.externalUrl;
+      entry.startUrl = r.externalUrl;
+      entry.mutating = false;
+      a[tabId] = entry;
+      await setActive(a);
+      await chrome.storage.session.set({ auto: { marketplace: mk, stage: "borrando el anuncio de prueba" } });
+      await chrome.tabs.update(tabId, { url: r.externalUrl });
+      return;
+    }
+    return closeAuto({ ok: false, orphan: !!r.ok, error: r.ok ? "Se publicó el anuncio de prueba pero no se obtuvo su URL: bórralo a mano." : r.error });
+  }
+  if (!r.ok) return closeAuto({ ok: false, orphan: true, url: entry.externalUrl, error: `No se pudo borrar el anuncio de prueba: ${r.error}` });
+
+  await new Promise((res) => setTimeout(res, 1500)); // deja llegar las últimas peticiones grabadas
+  const s = await stopRecording(); // sintetiza y guarda el perfil (borrador)
+  await chrome.storage.session.remove("auto");
+  if (!s.ok) {
+    const why = (s.error && (s.error.message || s.error.code)) || "grabación insuficiente";
+    return closeAuto({ ok: false, error: `Se subió y borró el anuncio de prueba, pero no se pudo deducir el perfil: ${why}` });
+  }
+  await closeAuto({ ok: true, learned: true, verifying: !!entry.verify, warnings: (s.report && s.report.warnings) || [] });
+  if (entry.verify) {
+    try {
+      await startSelftest(mk);
+    } catch (e) {
+      await setAutoLast(mk, { ok: false, learned: true, error: `Perfil aprendido, pero no se pudo verificar: ${e.message || e}`, at: Date.now() });
+    }
+  }
+}
+
+async function discardAutoLearn(tabId, entry, error) {
+  const a = await getActive();
+  delete a[tabId];
+  await setActive(a);
+  await chrome.storage.session.remove(["auto", "rec", "recCalls", "recUrls"]);
+  await setAutoLast(entry.marketplace, { ok: false, orphan: entry.mutating || entry.phase === "delete", url: entry.externalUrl || null, error, at: Date.now() });
 }
 
 async function stopRecording() {
@@ -336,6 +425,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // ---- desde el popup: aprendizaje ----
   if (msg.type === "rec-start") return reply(startRecording(msg.marketplace)), true;
+  if (msg.type === "autolearn-start") return reply(startAutoLearn(msg.marketplace, msg.verify)), true;
   if (msg.type === "rec-stop") return reply(stopRecording()), true;
   if (msg.type === "selftest-start") return reply(startSelftest(msg.marketplace)), true;
   if (msg.type === "profiles-get") {
@@ -343,6 +433,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       (async () => ({
         profiles: await MLProfiles.all(),
         rec: (await chrome.storage.session.get("rec")).rec || null,
+        auto: (await chrome.storage.session.get("auto")).auto || null,
+        autoLast: (await chrome.storage.local.get("autoLast")).autoLast || {},
       }))()
     );
     return true;
@@ -372,6 +464,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     (async () => {
       const entry = (await getActive())[sender.tab.id];
       if (!entry) return sendResponse(null);
+      if (entry.autolearn) {
+        return sendResponse({
+          action: "autolearn",
+          phase: entry.phase,
+          marketplace: entry.marketplace,
+          listing: entry.listing,
+          photos: entry.photoDataUrls || [],
+          externalUrl: entry.externalUrl || null,
+          startUrl: entry.startUrl || null,
+          resumed: !!entry.mutating,
+        });
+      }
       if (entry.selftest) {
         return sendResponse({
           action: "selftest",
@@ -406,6 +510,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const active = await getActive();
       if (active[sender.tab.id] && msg.phase === "mutating") {
         active[sender.tab.id].mutating = true;
+        if (msg.from && /^https:/.test(msg.from)) active[sender.tab.id].startUrl = msg.from;
         await setActive(active);
       }
       sendResponse({ ok: true });

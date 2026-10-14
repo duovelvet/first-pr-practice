@@ -9,6 +9,7 @@
   if (!(await MLBridge.whenReady())) return;
 
   MLBridge.setRecording(true);
+  self.MLRecording = true; // lo espera el aprendizaje automático (content.js) antes de tocar la página
   MLBridge.onRecCall((call) => chrome.runtime.sendMessage({ type: "rec-call", call }).catch(() => {}));
 
   const SECRET_KEY = /pass(word)?|secret|token|authoriz|cookie|session|jwt|bearer/i;

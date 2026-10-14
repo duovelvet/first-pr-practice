@@ -54,8 +54,23 @@ function button(label, onClick, secondary) {
   return b;
 }
 
+let autoTimer = null;
+
+// Resultado del último aprendizaje automático de este marketplace.
+function autoNote(wrap, last) {
+  if (!last) return;
+  if (last.ok) {
+    wrap.append(el("p", last.verifying ? "✔ Aprendido solo. Verificando por API…" : "✔ Aprendido solo (borrador).", "ok"));
+    for (const w of last.warnings || []) wrap.append(el("p", "⚠ " + w, "warn"));
+  } else {
+    wrap.append(el("p", `✖ Aprendizaje automático: ${last.error}${last.orphan ? " — REVISA si quedó un anuncio de prueba" + (last.url ? ": " + last.url : "") : ""}`, "bad"));
+  }
+}
+
 async function renderApi() {
-  const { profiles = {}, rec } = (await call({ type: "profiles-get" })) || {};
+  const { profiles = {}, rec, auto, autoLast = {} } = (await call({ type: "profiles-get" })) || {};
+  clearTimeout(autoTimer);
+  if (auto) autoTimer = setTimeout(renderApi, 2000); // mientras aprende solo, refresca el estado
   const box = $("apiList");
   box.textContent = "";
   for (const [id, name] of MARKETS) {
@@ -63,7 +78,9 @@ async function renderApi() {
     const wrap = el("div", null, "mk");
     wrap.append(el("h3", name));
 
-    if (rec && rec.marketplace === id) {
+    if (auto && auto.marketplace === id) {
+      wrap.append(el("p", `⏳ Aprendiendo solo: ${auto.stage}. No cierres la pestaña que se abrió.`, "warn"));
+    } else if (rec && rec.marketplace === id) {
       wrap.append(el("p", "● Grabando. En la pestaña que se abrió, usa EXACTAMENTE estos valores:", "warn"));
       const ul = el("ul");
       ul.append(el("li", `Título: ${rec.sentinels.title}`), el("li", `Descripción: ${rec.sentinels.description}`), el("li", `Precio: ${rec.sentinels.price}`));
@@ -75,9 +92,16 @@ async function renderApi() {
       }));
     } else if (!p) {
       wrap.append(el("p", "Sin perfil: se usa la página (DOM).", "muted"));
-      wrap.append(button("Aprender", async () => { await call({ type: "rec-start", marketplace: id }); }));
+      autoNote(wrap, autoLast[id]);
+      wrap.append(button("Aprender solo y verificar", async () => {
+        if (!confirm(`Se publicará y se borrará un anuncio de prueba REAL (MLTEST-…) en tu cuenta de ${name}, y luego otro para verificar. ¿Continuar?`)) return;
+        const r = await call({ type: "autolearn-start", marketplace: id, verify: true });
+        if (r && r.error) alert(r.error);
+      }));
+      wrap.append(button("Aprender a mano", async () => { await call({ type: "rec-start", marketplace: id }); }, true));
     } else {
       const st = p.status;
+      autoNote(wrap, autoLast[id]);
       wrap.append(el("p", st === "verified" ? "✔ Verificado: usa la API" : st === "stale" ? "⚠ Desactivado: el sitio respondió distinto" : "Perfil aprendido, sin verificar (se usa la página)", st === "verified" ? "ok" : "warn"));
       if (st === "stale" && p.staleReason) wrap.append(el("p", p.staleReason, "muted"));
       const pub = p.api && p.api.publish;

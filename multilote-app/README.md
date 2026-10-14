@@ -63,6 +63,8 @@ Estrategia por tarea: **API** (solo si el adaptador tiene `api.verified = true` 
 
 ### Modo API: aprender y verificar (sin consola)
 
+**Atajo automático:** popup → Modo API → **Aprender solo y verificar**. La extensión abre el sitio, sube ella misma un anuncio de prueba (`MLTEST-…`, con su motor DOM, rellenando por heurísticas de nombre/placeholder y siguiendo un enlace «vender» si hace falta), lo borra, deduce el perfil y lanza la autoprueba por API. Crea y borra anuncios **reales** en tu cuenta (el popup pide confirmación). Si algo no cuadra (sin formulario, sesión sin iniciar, rechazo…) se detiene con un mensaje y avisa si quedó algún anuncio de prueba. La aceptación de las constantes copiadas (categoría, envío…) sigue siendo manual a propósito. El modo manual de abajo queda como alternativa.
+
 Está **desactivado** en todos los adaptadores del repositorio (`api.verified = false`): los endpoints reales no se conocen y no se adivinan. En su lugar, cada instalación los **aprende** y los **verifica** ella sola:
 
 1. Popup → **Modo API (avanzado)** → marketplace → **Aprender**. Se abre el sitio; hazlo todo a mano con los valores que muestra el popup (título `MLTEST-1234`, precio `7.77`…): sube **una foto**, publica, abre el anuncio y **elimínalo**.
@@ -76,7 +78,7 @@ Límites: las fotos solo se suben por API si el sitio las acepta como petición 
 ### Pruebas
 
 - `npm run test:unit`: sintetizador de perfiles (función pura) con grabaciones de ejemplo, incluidos los casos de error.
-- `npm run test:e2e:learn`: el aprendizaje completo con la extensión real y dos sitios simulados (API JSON con validación y formularios con CSRF de un solo uso): grabar → deducir → verificar → publicar/retirar desde la cola → degradar si el sitio cambia, y que ningún token salga de la página ni se guarde en el perfil.
+- `npm run test:e2e:learn`: el aprendizaje (manual y AUTOMÁTICO, sin tocar el sitio) completo con la extensión real y dos sitios simulados (API JSON con validación y formularios con CSRF de un solo uso): grabar → deducir → verificar → publicar/retirar desde la cola → degradar si el sitio cambia, y que ningún token salga de la página ni se guarde en el perfil.
 - `npm run test:e2e` carga la extensión **real** en Chromium con un Supabase simulado y un marketplace simulado (HTTPS local, cabeceras de sesión, CORS, diálogo de confirmación) y ejercita 10 escenarios: publicar/retirar por API, caída al DOM ante 401, fallo definitivo ante 500, 404 como «ya retirado», sin sesión, rechazo de la web, publicación sin confirmar, y que ningún token salga de la página. Los planes de API de esas pruebas son de ejemplo, no los de Wallapop.
 
 ## Pendiente / a validar

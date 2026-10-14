@@ -32,7 +32,7 @@ let announcedMutation = false;
 async function announceMutation() {
   if (announcedMutation) return;
   announcedMutation = true;
-  await chrome.runtime.sendMessage({ type: "job-phase", phase: "mutating" }).catch(() => {});
+  await chrome.runtime.sendMessage({ type: "job-phase", phase: "mutating", from: location.href }).catch(() => {});
 }
 
 // Lee valores de la propia página que el plan necesita (p. ej. el token CSRF de un formulario).
@@ -78,8 +78,8 @@ const listingVars = (l) => ({
 // ---------------------------------------------------------------------------------------------------------------
 // Publicar
 // ---------------------------------------------------------------------------------------------------------------
-async function domPublish(adapter, data, confirm) {
-  const sel = adapter.dom.publish;
+async function domPublish(adapter, data, confirm, selOverride) {
+  const sel = selOverride || adapter.dom.publish;
   const titleEl = await MLDom.waitFor(sel.title);
   if (!titleEl) throw new JobError("No se encontró el formulario de subida (¿sesión iniciada en el marketplace?)", { code: "form_not_found" });
 
@@ -160,6 +160,7 @@ async function domDelete(adapter) {
   if (found === "gone") return { ok: true, externalUrl: startUrl, via: "dom" }; // ya estaba retirado
   if (!found) throw new JobError("No se encontró el botón de eliminar (¿sesión iniciada como propietario del anuncio?)", { code: "selector" });
 
+  await announceMutation(); // si el clic navega (formulario clásico), la página siguiente sabrá que ya se pulsó
   found.click();
 
   // Si el marketplace pide confirmación, aparece un diálogo con otro botón de confirmar.
@@ -215,6 +216,61 @@ async function selftest(adapter, data) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Aprendizaje AUTOMÁTICO: mientras la grabación está activa en esta pestaña, la propia extensión sube un anuncio de
+// prueba (valores centinela) con el motor DOM y lo borra. Así el usuario no hace nada a mano. Para sitios cuyos
+// selectores aún no están ajustados, rellena el formulario con heurísticas de nombre/placeholder (solo aquí) y, si
+// no hay formulario, sigue UN enlace de «vender». Si algo no cuadra falla con un mensaje claro (nunca inventa).
+// Con formularios clásicos el clic navega y este script muere: la página siguiente retoma con `data.resumed`.
+// ---------------------------------------------------------------------------------------------------------------
+const LEARN_SEL = {
+  title: 'input[name*="titulo" i], input[name*="title" i], input[id*="titulo" i], input[id*="title" i], input[placeholder*="título" i], input[placeholder*="title" i]',
+  description: 'textarea[name*="descrip" i], textarea[id*="descrip" i], textarea',
+  price: 'input[name*="precio" i], input[name*="price" i], input[id*="precio" i], input[id*="price" i], input[placeholder*="precio" i]',
+};
+const SELL_LINK = /(vender|sell|publicar|subir|upload|nuevo-?lote)/i;
+const joinSel = (...a) => a.filter(Boolean).join(", ");
+
+async function autolearn(adapter, data) {
+  assertLoggedIn(adapter);
+  const moved = data.startUrl && location.href !== data.startUrl;
+  if (data.resumed) {
+    if (data.phase === "publish") {
+      if (moved) return { ok: true, externalUrl: location.href, via: "dom" };
+      throw new JobError("Se envió el formulario pero la página no avanzó: revisa si se creó el anuncio de prueba", { code: "unconfirmed", fatal: true });
+    }
+    if (moved) return { ok: true, externalUrl: data.startUrl, via: "dom" }; // la retirada navegó a otra página
+  }
+  if (!(await MLDom.waitUntil(() => self.MLRecording === true, 10000))) {
+    throw new JobError("La grabación no está activa en esta pestaña", { code: "rec_off" });
+  }
+  if (data.phase === "delete") return domDelete(adapter);
+
+  const base = adapter.dom.publish;
+  const sel = { ...base, title: joinSel(base.title, LEARN_SEL.title), description: joinSel(base.description, LEARN_SEL.description), price: joinSel(base.price, LEARN_SEL.price) };
+  if (!(await MLDom.waitFor(sel.title, 8000))) {
+    if (!sessionStorage.getItem("mlHop")) {
+      const link = [...document.querySelectorAll("a[href]")].find((a) => {
+        try {
+          const u = new URL(a.href);
+          return u.protocol === "https:" && MLAdapters.forHost(u.hostname) === adapter && SELL_LINK.test(u.pathname + " " + a.textContent);
+        } catch {
+          return false;
+        }
+      });
+      if (link) {
+        sessionStorage.setItem("mlHop", "1");
+        location.href = link.href;
+        return new Promise(() => {}); // la página siguiente retoma la tarea
+      }
+    }
+    sessionStorage.removeItem("mlHop");
+    throw new JobError("No encontré el formulario de subida ni un enlace para vender: aprende a mano desde el popup (Aprender a mano)", { code: "form_not_found" });
+  }
+  sessionStorage.removeItem("mlHop");
+  return domPublish(adapter, data, null, sel);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 (async () => {
   const adapter = MLAdapters.forHost(location.hostname);
   if (!adapter) return;
@@ -226,8 +282,9 @@ async function selftest(adapter, data) {
     if (data.action === "publish") await report(await publish(adapter, data));
     else if (data.action === "delete") await report(await retire(adapter, data));
     else if (data.action === "selftest") await report(await selftest(adapter, data));
+    else if (data.action === "autolearn") await report(await autolearn(adapter, data));
     else throw new JobError(`Acción no soportada: ${data.action}`, { fatal: true });
   } catch (e) {
-    await report({ ok: false, error: String((e && e.message) || e), code: e.code || null, fatal: !!e.fatal, selftest: data.action === "selftest" });
+    await report({ ok: false, error: String((e && e.message) || e), code: e.code || null, fatal: !!e.fatal, selftest: data.action === "selftest" || data.action === "autolearn" });
   }
 })();
