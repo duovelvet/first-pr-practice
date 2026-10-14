@@ -27,6 +27,7 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.20",
+    "playwright": "^1.64.1",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
     "terser": "^5.51.2",
