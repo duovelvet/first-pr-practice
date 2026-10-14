@@ -1,4 +1,5 @@
-// Rellena el formulario de subida del marketplace con el artículo elegido en el popup.
+// Se ejecuta en Wallapop / Vinted / Milanuncios. Si el service worker abrió esta pestaña
+// para una tarea de sync_queue, rellena el formulario, publica y comunica el resultado.
 // IMPORTANTE: los selectores dependen del HTML de cada marketplace y pueden cambiar.
 // Ajusta SELECTORS tras inspeccionar el formulario real de cada sitio.
 
@@ -16,18 +17,21 @@ const SELECTORS = {
     description: 'textarea[name="description"], textarea#description',
     price: 'input[name="sale_price"], input#sale_price, input[name="price"]',
     photos: 'input[type="file"]',
+    submit: 'button[type="submit"]',
   },
   vinted: {
     title: 'input[name="title"], input#title',
     description: 'textarea[name="description"], textarea#description',
     price: 'input[name="price"], input#price',
     photos: 'input[type="file"]',
+    submit: 'button[type="submit"]',
   },
   milanuncios: {
     title: 'input[name="title"], input#title',
     description: 'textarea[name="description"], textarea#description',
     price: 'input[name="price"], input#price',
     photos: 'input[type="file"]',
+    submit: 'button[type="submit"]',
   },
 };
 
@@ -39,7 +43,7 @@ function setNativeValue(el, value) {
   el.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function waitFor(selector, timeout = 15000) {
+function waitFor(selector, timeout = 20000) {
   return new Promise((resolve) => {
     const found = document.querySelector(selector);
     if (found) return resolve(found);
@@ -58,15 +62,26 @@ function waitFor(selector, timeout = 15000) {
   });
 }
 
-async function attachPhotos(input, urls) {
+function waitForUrlChange(from, timeout = 30000) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const t = setInterval(() => {
+      if (location.href !== from) {
+        clearInterval(t);
+        resolve(true);
+      } else if (Date.now() - start > timeout) {
+        clearInterval(t);
+        resolve(false);
+      }
+    }, 500);
+  });
+}
+
+async function attachPhotos(input, dataUrls) {
   const dt = new DataTransfer();
-  for (const [i, url] of urls.entries()) {
-    try {
-      const blob = await (await fetch(url)).blob();
-      dt.items.add(new File([blob], `foto-${i + 1}.jpg`, { type: blob.type || "image/jpeg" }));
-    } catch {
-      /* foto omitida */
-    }
+  for (const [i, d] of dataUrls.entries()) {
+    const blob = await (await fetch(d)).blob();
+    dt.items.add(new File([blob], `foto-${i + 1}.jpg`, { type: blob.type || "image/jpeg" }));
   }
   if (dt.files.length) {
     input.files = dt.files;
@@ -74,39 +89,39 @@ async function attachPhotos(input, urls) {
   }
 }
 
-function banner(text) {
-  const div = document.createElement("div");
-  div.textContent = text;
-  Object.assign(div.style, {
-    position: "fixed", top: "12px", right: "12px", zIndex: 2147483647, background: "#1b46a3",
-    color: "#fff", padding: "10px 14px", borderRadius: "8px", font: "14px system-ui", boxShadow: "0 4px 12px rgba(0,0,0,.25)",
-  });
-  document.body.appendChild(div);
-  setTimeout(() => div.remove(), 8000);
-}
-
 (async () => {
   if (!SITE) return;
-  const { pending } = await chrome.storage.local.get("pending");
-  // Caduca a los 10 min para no rellenar formularios por error más tarde.
-  if (!pending || pending.marketplace !== SITE || Date.now() - pending.at > 10 * 60 * 1000) return;
+  const data = await chrome.runtime.sendMessage({ type: "get-job" }).catch(() => null);
+  if (!data || data.marketplace !== SITE) return; // pestaña normal del usuario: no tocar nada
 
+  const report = (ok, extra = {}) => chrome.runtime.sendMessage({ type: "job-result", ok, ...extra });
   const sel = SELECTORS[SITE];
-  const titleEl = await waitFor(sel.title);
-  if (!titleEl) return; // no estamos en la página de subida
 
-  const { listing, photoUrls } = pending;
-  setNativeValue(titleEl, listing.title);
+  try {
+    const titleEl = await waitFor(sel.title);
+    if (!titleEl) throw new Error("No se encontró el formulario de subida (¿sesión iniciada en el marketplace?)");
 
-  const desc = document.querySelector(sel.description);
-  if (desc) setNativeValue(desc, listing.description || "");
+    const { listing, photos } = data;
+    setNativeValue(titleEl, listing.title);
 
-  const price = document.querySelector(sel.price);
-  if (price) setNativeValue(price, String(listing.price));
+    const desc = document.querySelector(sel.description);
+    if (desc) setNativeValue(desc, listing.description || "");
 
-  const fileInput = document.querySelector(sel.photos);
-  if (fileInput && photoUrls.length) await attachPhotos(fileInput, photoUrls);
+    const price = document.querySelector(sel.price);
+    if (price) setNativeValue(price, String(listing.price));
 
-  await chrome.storage.local.remove("pending");
-  banner("MultiLote ha rellenado el formulario. Revisa los datos y publica.");
+    const fileInput = document.querySelector(sel.photos);
+    if (fileInput && photos.length) await attachPhotos(fileInput, photos);
+
+    const submit = document.querySelector(sel.submit);
+    if (!submit) throw new Error("No se encontró el botón de publicar (selectores por ajustar)");
+
+    const before = location.href;
+    submit.click();
+    if (!(await waitForUrlChange(before))) throw new Error("No se pudo confirmar la publicación");
+
+    await report(true, { externalUrl: location.href });
+  } catch (e) {
+    await report(false, { error: String(e.message || e) });
+  }
 })();

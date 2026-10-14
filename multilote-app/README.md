@@ -2,22 +2,39 @@
 
 Cross-listing para vendedores en España (Wallapop, Vinted, Milanuncios). Next.js 14 + Tailwind + Supabase, más una extensión de Chrome (MV3).
 
+## Modelo de negocio
+
+- **Mensual:** 17,90 €/mes. **Fundador:** 69 € de pago único (sin caducidad).
+- Prueba gratuita de 7 días desde el registro (constante `TRIAL_DAYS` en `src/lib/plans.ts` y en `has_active_plan()` de la migración 0002; deben coincidir).
+- Encolar publicaciones exige plan activo o prueba, y se aplica en la base de datos (RLS de `sync_queue`), no solo en la interfaz.
+
+## Arquitectura
+
+```
+Panel web ── INSERT ──▶ sync_queue ◀── claim_sync_jobs() ── Extensión (alarma cada 1 min)
+     ▲                      │                                     │ abre pestaña, content.js rellena y publica
+     └──── publications ◀── complete_sync_job(ok | error + backoff) ◀┘
+```
+
+- `0001_init.sql`: listings, publications, bucket privado de fotos.
+- `0002_sync_queue_billing.sql`: `sync_queue`, RPC `claim_sync_jobs` (SKIP LOCKED, recupera tareas colgadas >10 min) y `complete_sync_job` (éxito → `publications`; fallo → reintento con backoff 2/4 min, máx. 3 intentos → `failed`), `subscriptions` y `has_active_plan()`.
+
 ## Panel web
 
-1. Crea un proyecto en Supabase y ejecuta `supabase/migrations/0001_init.sql` en el SQL Editor.
-2. `cp .env.example .env.local` y rellena `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
-3. `npm install && npm run dev`
-
-Incluye: landing, login/registro, listado de artículos, alta con fotos (bucket privado `listing-photos`), y detalle con estado de publicación por marketplace. RLS garantiza que cada usuario solo ve lo suyo.
+1. Crea un proyecto en Supabase y ejecuta las migraciones `0001` y `0002` en orden.
+2. En Stripe crea dos precios (17,90 €/mes recurrente y 69 € único) y un webhook a `/api/stripe/webhook` con los eventos `checkout.session.completed`, `customer.subscription.updated` y `customer.subscription.deleted`.
+3. `cp .env.example .env.local` y rellena las variables.
+4. `npm install && npm run dev`
 
 ## Extensión de Chrome
 
 1. Edita `extension/config.js` con la URL y anon key de Supabase.
-2. Chrome → `chrome://extensions` → activar modo desarrollador → "Cargar descomprimida" → carpeta `extension/`.
-3. Abre el popup, inicia sesión con la misma cuenta, elige un artículo y pulsa el marketplace: se abre su formulario de subida y se rellena título, descripción, precio y fotos.
+2. `chrome://extensions` → modo desarrollador → "Cargar descomprimida" → carpeta `extension/`.
+3. Inicia sesión en el popup. Desde el panel pulsa «Publicar»: la extensión reclama la tarea, abre el formulario del marketplace en una pestaña en segundo plano, lo rellena, publica y reporta el resultado. Hay que tener la sesión abierta en cada marketplace.
 
 ## Pendiente / a validar
 
-- Los selectores de `extension/content.js` son una primera aproximación: hay que inspeccionar el formulario real de cada marketplace (categoría, estado, talla, etc.) y ajustarlos.
+- Los selectores de `extension/content.js` (incluido el botón de publicar) son una primera aproximación: hay que ajustarlos al formulario real de cada marketplace (categoría, estado, talla, etc.).
+- La extensión solo implementa la acción `publish`. `update` y `delete` existen en el esquema pero fallan con un mensaje claro; faltan para retirar anuncios al vender.
 - Revisar los términos de uso de cada marketplace respecto a la automatización.
-- Iconos de la extensión, facturación (Stripe), y sincronización de ventas.
+- Iconos de la extensión y portal de cliente de Stripe (cancelar/cambiar plan).

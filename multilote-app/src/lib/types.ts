@@ -27,3 +27,15 @@ export type Publication = {
   external_url: string | null;
   status: "pending" | "published" | "sold" | "removed" | "error";
 };
+
+export type SyncJob = {
+  id: string;
+  listing_id: string;
+  marketplace: Marketplace;
+  action: "publish" | "update" | "delete";
+  status: "pending" | "processing" | "done" | "failed";
+  attempts: number;
+  last_error: string | null;
+  external_url: string | null;
+  created_at: string;
+};

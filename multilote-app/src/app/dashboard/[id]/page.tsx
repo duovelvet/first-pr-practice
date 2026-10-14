@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import PublicationManager from "@/components/PublicationManager";
-import type { Listing, Publication } from "@/lib/types";
+import SyncManager from "@/components/SyncManager";
+import type { Listing, Publication, SyncJob } from "@/lib/types";
 
 export default async function ListingPage({ params }: { params: { id: string } }) {
   const supabase = createClient();
@@ -9,7 +9,10 @@ export default async function ListingPage({ params }: { params: { id: string } }
   if (!listing) notFound();
   const l = listing as Listing;
 
-  const { data: pubs } = await supabase.from("publications").select("*").eq("listing_id", l.id);
+  const [{ data: pubs }, { data: jobs }] = await Promise.all([
+    supabase.from("publications").select("*").eq("listing_id", l.id),
+    supabase.from("sync_queue").select("*").eq("listing_id", l.id).order("created_at", { ascending: false }),
+  ]);
 
   const photoUrls = l.photos.length
     ? (await supabase.storage.from("listing-photos").createSignedUrls(l.photos, 3600)).data ?? []
@@ -34,9 +37,10 @@ export default async function ListingPage({ params }: { params: { id: string } }
 
       <h2 className="mb-3 mt-10 text-lg font-semibold">Publicaciones</h2>
       <p className="mb-3 text-sm text-slate-500">
-        Publica desde la extensión de Chrome y marca aquí el estado en cada marketplace.
+        Pulsa publicar y la extensión de Chrome resolverá la cola en segundo plano. Mantén Chrome abierto con la sesión
+        iniciada en cada marketplace.
       </p>
-      <PublicationManager listingId={l.id} publications={(pubs as Publication[]) ?? []} />
+      <SyncManager listingId={l.id} publications={(pubs as Publication[]) ?? []} jobs={(jobs as SyncJob[]) ?? []} />
     </>
   );
 }
