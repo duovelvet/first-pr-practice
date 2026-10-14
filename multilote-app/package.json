@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:inspector": "terser extension/tools/inspect-dom.js --compress passes=2 --mangle --format ascii_only=true,comments=false -o extension/tools/dist/inspect-dom.min.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
@@ -24,6 +25,7 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
+    "terser": "^5.51.2",
     "typescript": "^5.6.2"
   }
 }

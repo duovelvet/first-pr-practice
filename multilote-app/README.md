@@ -51,3 +51,9 @@ Panel web ── INSERT ──▶ sync_queue ◀── claim_sync_jobs() ── 
 2. un resumen del DOM (campos, botones, diálogos).
 
 Haz la prueba a mano (subir y borrar un producto de prueba, sin recargar) y ejecuta `dump()`: copia todo al portapapeles. Se anonimiza en el propio navegador: sin tokens, cookies, Authorization (solo «Bearer <redacted>»), emails/teléfonos/ubicación; los ids se sustituyen por etiquetas `ID#n` que permiten ver qué id devuelto al crear aparece luego en la URL del borrado. `mlGet(true)` registra también los GET propios; `mlClear()` borra el registro.
+
+### Bundle de una sola línea (para pegar sin errores)
+
+`npm run build:inspector` genera `extension/tools/dist/inspect-dom.min.js`: una sola línea, sin comentarios y solo ASCII (los acentos y símbolos van como `\uXXXX`), así no se rompe al copiar y pegar desde un chat ni en la consola de Chrome. Es el archivo recomendado para pegar. Hay que regenerarlo cada vez que cambie `inspect-dom.js`.
+
+Forma más cómoda de usarlo: F12 → pestaña **Sources** → **Snippets** → *New snippet* → pegar el contenido → Ctrl+Enter. El snippet queda guardado y no requiere `allow pasting`.
