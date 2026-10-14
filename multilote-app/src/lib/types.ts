@@ -38,5 +38,6 @@ export type SyncJob = {
   attempts: number;
   last_error: string | null;
   external_url: string | null;
+  run_after: string;
   created_at: string;
 };

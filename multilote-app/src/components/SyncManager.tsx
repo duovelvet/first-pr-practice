@@ -8,6 +8,16 @@ import { MARKETPLACES, type Listing, type Marketplace, type Publication, type Sy
 
 const ACTIVE = ["pending", "processing"];
 
+// Las publicaciones se espacian y no salen de noche (ver migración 0005): mostramos cuándo toca.
+function scheduledLabel(runAfter: string) {
+  const at = new Date(runAfter);
+  if (at.getTime() - Date.now() < 30_000) return null;
+  const tz = { timeZone: "Europe/Madrid" } as const;
+  const sameDay = at.toLocaleDateString("es-ES", tz) === new Date().toLocaleDateString("es-ES", tz);
+  const time = at.toLocaleTimeString("es-ES", { ...tz, hour: "2-digit", minute: "2-digit" });
+  return sameDay ? `hoy a las ${time}` : `${at.toLocaleDateString("es-ES", { ...tz, day: "numeric", month: "short" })} a las ${time}`;
+}
+
 export default function SyncManager({
   listingId,
   listingStatus,
@@ -135,7 +145,10 @@ export default function SyncManager({
 
           let status = "Sin publicar";
           if (deleting) status = job.status === "pending" ? "Retirada en cola — esperando a la extensión" : "Retirando anuncio…";
-          else if (active) status = job.status === "pending" ? "En cola — esperando a la extensión" : "Publicando…";
+          else if (active && job.status === "pending") {
+            const when = scheduledLabel(job.run_after);
+            status = when ? `Programada para ${when} (hora de Madrid)` : "En cola — esperando a la extensión";
+          } else if (active) status = "Publicando…";
           else if (failed) status = `Error${job.action === "delete" ? " al retirar" : ""}: ${job.last_error ?? "desconocido"}`;
           else if (published) status = "Publicado";
           else if (pub?.status === "removed") status = "Retirado";

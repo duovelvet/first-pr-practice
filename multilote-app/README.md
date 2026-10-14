@@ -17,13 +17,14 @@ Panel web ── INSERT ──▶ sync_queue ◀── claim_sync_jobs() ── 
 ```
 
 - `0001_init.sql`: listings, publications, bucket privado de fotos.
+- `0005_publish_pacing.sql`: anti-baneo. Trigger `schedule_publish_job` (al encolar un `publish`: `run_after` = último turno ocupado del mismo usuario+marketplace + 2 min + 0–40 s aleatorios; si no hay nadie delante, sale ya; si cae entre 22:30 y 08:30 de Madrid, pasa a las 08:30 siguientes + 0–40 s). `claim_sync_jobs` lo hace cumplir al reclamar (un `publish` por marketplace, separado 2 min del anterior, nunca de noche), así que vale aunque la extensión haya estado cerrada. Los `delete` no se retrasan. Parámetros fijos en la propia migración.
 - `0004_todocoleccion.sql`: añade `todocoleccion` al enum `marketplace`.
 - `0003_retire_listing.sql`: RPC `retire_listing` (vendido/archivado → cancela publicaciones pendientes y encola un `delete` por marketplace publicado; si una publicación termina después de retirar el artículo, su `delete` se encola solo). Retirar nunca se bloquea por plan caducado.
 - `0002_sync_queue_billing.sql`: `sync_queue`, RPC `claim_sync_jobs` (SKIP LOCKED, recupera tareas colgadas >10 min) y `complete_sync_job` (éxito → `publications`; fallo → reintento con backoff 2/4 min, máx. 3 intentos → `failed`), `subscriptions` y `has_active_plan()`.
 
 ## Panel web
 
-1. Crea un proyecto en Supabase y ejecuta las migraciones `0001` a `0004` en orden.
+1. Crea un proyecto en Supabase y ejecuta las migraciones `0001` a `0005` en orden.
 2. En Stripe crea dos precios (17,90 €/mes recurrente y 69 € único) y un webhook a `/api/stripe/webhook` con los eventos `checkout.session.completed`, `customer.subscription.updated` y `customer.subscription.deleted`.
 3. `cp .env.example .env.local` y rellena las variables.
 4. `npm install && npm run dev`
