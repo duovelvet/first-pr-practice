@@ -45,6 +45,9 @@ page-hook.js           MUNDO PRINCIPAL de la página (world "MAIN", document_sta
 lib/bridge.js          content script (mundo aislado): puente postMessage hacia page-hook.js
 lib/dom.js             utilidades de DOM (rellenar campos, esperar, localizar botones por texto exacto)
 lib/api-plan.js        ejecutor de planes de API DECLARATIVOS (pasos HTTP con plantillas {{var}})
+lib/plan-synth.js      deduce un perfil (planes publicar/retirar) a partir de una grabación con valores centinela
+lib/profiles.js        perfiles aprendidos: almacén, verificación por hash, consentimiento y salud (stale)
+lib/recorder.js        modo aprendizaje: retransmite las peticiones del gancho y los envíos de formularios nativos
 adapters/<sitio>.js    TODO lo que depende de cada marketplace, como datos: selectores, textos de retirada,
                        tap de confirmación, plan de API (publish/delete) y bandera api.verified
 content.js             motor: elige estrategia, ejecuta, informa; marca fallos definitivos
@@ -58,13 +61,23 @@ Estrategia por tarea: **API** (solo si el adaptador tiene `api.verified = true` 
 - El canal `window.postMessage` entre el gancho y el content script **no es de confianza** (los scripts de la web también lo ven): solo viajan datos no sensibles (ids extraídos, estados HTTP).
 - El gancho solo hace peticiones `https` a la misma familia de dominios que la página.
 
-### Activar el modo API de un marketplace
+### Modo API: aprender y verificar (sin consola)
 
-Está **desactivado** en todos (`api.verified = false`): no hay endpoints verificados y no se adivinan. Para activarlo: capturar tráfico real con `tools/inspect-dom.js` (subir y borrar un anuncio de prueba), rellenar en `adapters/<sitio>.js` el tap `confirm`, `idFromUrl` y los planes `api.publish` / `api.delete` (el comentario de `adapters/wallapop.js` muestra la forma) y poner `verified: true`. Si el sitio exige una cabecera calculada por su propio JavaScript para cada petición, la API no es replicable y se queda en DOM.
+Está **desactivado** en todos los adaptadores del repositorio (`api.verified = false`): los endpoints reales no se conocen y no se adivinan. En su lugar, cada instalación los **aprende** y los **verifica** ella sola:
+
+1. Popup → **Modo API (avanzado)** → marketplace → **Aprender**. Se abre el sitio; hazlo todo a mano con los valores que muestra el popup (título `MLTEST-1234`, precio `7.77`…): sube **una foto**, publica, abre el anuncio y **elimínalo**.
+2. **Terminar y analizar**: `lib/plan-synth.js` localiza dónde viajó cada valor centinela y deduce el perfil: plantillas `{{title}}`/`{{price}}`…, cómo extraer el id de la respuesta o de la URL tras redirecciones, el token CSRF de la página, la petición de borrado, la URL del formulario de subida y cómo sacar el id de la URL guardada del anuncio. Funciona con APIs JSON (`fetch`/XHR) y con formularios clásicos (navegaciones).
+3. El perfil queda en **borrador**. Lo que no era un valor centinela se copia tal cual del anuncio de prueba (categoría, ubicación, envío…): el popup lo lista y, **si quieres publicar por API, hay que marcarlo expresamente**; si no, publicar sigue por la página. Retirar no tiene ese problema.
+4. **Verificar con anuncio de prueba**: la extensión publica y retira un anuncio de prueba **por API**. Solo si va bien el perfil pasa a **verificado** (ligado al hash del plan). Si algo falla, el popup lo dice y avisa si quedó un anuncio de prueba por borrar.
+5. **Salud**: si el sitio responde distinto a lo aprendido dos veces seguidas (p. ej. 422 por un campo nuevo), el perfil pasa a **desactivado** y todo vuelve a la página sin intervención.
+
+Límites: las fotos solo se suben por API si el sitio las acepta como petición multipart a su propio dominio (si van a un CDN externo, esos anuncios van por la página); si el sitio firma cada petición con JavaScript propio, la API no es replicable y se queda en DOM. El perfil vive en `chrome.storage.local` (sin tokens ni cookies).
 
 ### Pruebas
 
-`npm run test:e2e` carga la extensión **real** en Chromium con un Supabase simulado y un marketplace simulado (HTTPS local, cabeceras de sesión, CORS, diálogo de confirmación) y ejercita 10 escenarios: publicar/retirar por API, caída al DOM ante 401, fallo definitivo ante 500, 404 como «ya retirado», sin sesión, rechazo de la web, publicación sin confirmar, y que ningún token salga de la página. Los planes de API de esas pruebas son de ejemplo, no los de Wallapop.
+- `npm run test:unit`: sintetizador de perfiles (función pura) con grabaciones de ejemplo, incluidos los casos de error.
+- `npm run test:e2e:learn`: el aprendizaje completo con la extensión real y dos sitios simulados (API JSON con validación y formularios con CSRF de un solo uso): grabar → deducir → verificar → publicar/retirar desde la cola → degradar si el sitio cambia, y que ningún token salga de la página ni se guarde en el perfil.
+- `npm run test:e2e` carga la extensión **real** en Chromium con un Supabase simulado y un marketplace simulado (HTTPS local, cabeceras de sesión, CORS, diálogo de confirmación) y ejercita 10 escenarios: publicar/retirar por API, caída al DOM ante 401, fallo definitivo ante 500, 404 como «ya retirado», sin sesión, rechazo de la web, publicación sin confirmar, y que ningún token salga de la página. Los planes de API de esas pruebas son de ejemplo, no los de Wallapop.
 
 ## Pendiente / a validar
 

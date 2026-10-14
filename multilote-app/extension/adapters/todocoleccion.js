@@ -1,7 +1,8 @@
-// Adaptador de Todocolección. Mismo esquema que adapters/wallapop.js (léelo para la forma de api/confirm).
-// Todo está SIN verificar: selectores genéricos y modo API desactivado. Pendiente de inspeccionar el formulario
-// real (categoría obligatoria, precio fijo/subasta…) y su tráfico. Una sesión basada solo en cookies se
-// declara con requireSession: false en el plan; si usa CSRF/cabeceras, el gancho las reutiliza solas.
+// Adaptador de Todocolección. Mismo esquema y misma política que adapters/wallapop.js: nada de endpoints inventados.
+// Aquí la web suele ser de formularios clásicos con token CSRF y cookie de sesión: el perfil aprendido lo cubre
+// (cuerpos urlencoded/multipart, token leído de la propia página, id sacado de la URL tras la redirección,
+// requireSession=false) y APRENDE también la URL real del formulario de «vender», por eso UPLOAD_URLS.todocoleccion en
+// config.js es solo un punto de partida.
 MLAdapters.register({
   id: "todocoleccion",
   hostRe: /(^|\.)todocoleccion\.net$/i,

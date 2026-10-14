@@ -17,7 +17,7 @@ const MULTILOTE_CONFIG = {
     wallapop: "https://es.wallapop.com/app/catalog/upload",
     vinted: "https://www.vinted.es/items/new",
     milanuncios: "https://www.milanuncios.com/publicar-anuncio/",
-    // PENDIENTE: URL real del formulario de «vender» de Todocolección (por confirmar al inspeccionarlo).
+    // Punto de partida: al grabar, el perfil aprende la URL real del formulario de «vender» y la usa en su lugar.
     todocoleccion: "https://www.todocoleccion.net/",
   },
 };

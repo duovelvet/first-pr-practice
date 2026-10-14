@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MultiLote",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Sincroniza tu cola de MultiLote con Wallapop, Vinted, Milanuncios y Todocolección.",
   "permissions": [
     "storage",
@@ -46,12 +46,14 @@
         "lib/bridge.js",
         "lib/dom.js",
         "lib/api-plan.js",
+        "lib/profiles.js",
         "adapters/_registry.js",
         "adapters/wallapop.js",
         "adapters/vinted.js",
         "adapters/milanuncios.js",
         "adapters/todocoleccion.js",
-        "content.js"
+        "content.js",
+        "lib/recorder.js"
       ],
       "run_at": "document_idle"
     }

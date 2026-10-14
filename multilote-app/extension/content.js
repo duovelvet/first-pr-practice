@@ -1,10 +1,11 @@
 // Motor de ejecución en la página del marketplace (content script, mundo aislado).
-// Orden de carga (manifest): lib/bridge.js, lib/dom.js, lib/api-plan.js, adapters/*.js, content.js.
+// Orden de carga (manifest): lib/bridge.js, lib/dom.js, lib/api-plan.js, lib/profiles.js, adapters/*.js, content.js,
+// lib/recorder.js.
 //
-// Si el service worker abrió esta pestaña para una tarea de sync_queue:
+// Si el service worker abrió esta pestaña para una tarea de sync_queue (o para la autoprueba de un perfil):
 //   1. pide la tarea a background (get-job),
 //   2. la ejecuta con la mejor estrategia disponible:
-//        API (plan verificado del adaptador, usando la sesión viva de la página)  ->  DOM (respaldo),
+//        API (plan del adaptador o PERFIL VERIFICADO, con la sesión viva de la página)  ->  DOM (respaldo),
 //   3. informa del resultado (job-result) con: ok, externalUrl, via, y si el fallo es definitivo (fatal).
 //
 // Regla de seguridad contra duplicados: si ya se envió una petición que CREA algo y el resultado es ambiguo
@@ -34,11 +35,18 @@ async function announceMutation() {
   await chrome.runtime.sendMessage({ type: "job-phase", phase: "mutating" }).catch(() => {});
 }
 
+// Lee valores de la propia página que el plan necesita (p. ej. el token CSRF de un formulario).
+const readDom = (spec) => {
+  const el = document.querySelector(spec.selector);
+  if (!el) return null;
+  return spec.attr ? el.getAttribute(spec.attr) : el.textContent;
+};
+
 // Ejecuta un plan de API. Devuelve el resultado de MLApiPlan.run, o { fallback } si el modo API no está disponible.
 async function tryApi(plan, vars, photos) {
-  if (!(await MLBridge.whenReady())) return { ok: false, fallback: true, error: "gancho de red no disponible" };
+  if (!(await MLBridge.whenReady())) return { ok: false, fallback: true, kind: "precondition", error: "gancho de red no disponible" };
   if (plan.requireSession !== false && !(await MLBridge.waitForSession())) {
-    return { ok: false, fallback: true, error: "sin sesión detectada en la página" };
+    return { ok: false, fallback: true, kind: "precondition", error: "sin sesión detectada en la página" };
   }
   const bridge = {
     api: async (req) => {
@@ -46,13 +54,21 @@ async function tryApi(plan, vars, photos) {
       return MLBridge.api(req);
     },
   };
-  return MLApiPlan.run(plan, vars, photos, bridge);
+  return MLApiPlan.run(plan, vars, photos, bridge, { dom: readDom });
+}
+
+// Salud del perfil aprendido: informa del resultado para desactivarlo si el sitio cambia.
+async function health(adapter, eff, r) {
+  if (eff.source !== "profile") return;
+  await MLProfiles.reportOutcome(adapter.id, !!r.ok, r.kind).catch(() => {});
 }
 
 const listingVars = (l) => ({
   title: l.title ?? "",
   description: l.description ?? "",
   price: l.price,
+  priceStr: String(l.price),
+  priceEs: String(l.price).replace(".", ","),
   category: l.category ?? "",
   brand: l.brand ?? "",
   size: l.size ?? "",
@@ -62,7 +78,7 @@ const listingVars = (l) => ({
 // ---------------------------------------------------------------------------------------------------------------
 // Publicar
 // ---------------------------------------------------------------------------------------------------------------
-async function domPublish(adapter, data) {
+async function domPublish(adapter, data, confirm) {
   const sel = adapter.dom.publish;
   const titleEl = await MLDom.waitFor(sel.title);
   if (!titleEl) throw new JobError("No se encontró el formulario de subida (¿sesión iniciada en el marketplace?)", { code: "form_not_found" });
@@ -80,7 +96,7 @@ async function domPublish(adapter, data) {
   if (!submit) throw new JobError("No se encontró el botón de publicar (selectores por ajustar)", { code: "selector" });
 
   // Antes de pulsar, escuchamos la llamada de creación de la propia web: da el id/URL reales del anuncio.
-  const tap = adapter.confirm && (await MLBridge.whenReady(1500)) ? MLBridge.expectTap(adapter.confirm, 30000) : null;
+  const tap = confirm && (await MLBridge.whenReady(1500)) ? MLBridge.expectTap(confirm, 30000) : null;
   const before = location.href;
   await announceMutation();
   submit.click();
@@ -105,7 +121,7 @@ async function domPublish(adapter, data) {
   if (hit || (winner.kind === "url" && winner.changed)) {
     let externalUrl = location.href;
     try {
-      if (hit && adapter.confirm.urlTemplate) externalUrl = MLApiPlan.interpolate(adapter.confirm.urlTemplate, hit.extracted);
+      if (hit && confirm.urlTemplate) externalUrl = MLApiPlan.interpolate(confirm.urlTemplate, hit.extracted);
     } catch {
       /* sin datos suficientes: nos quedamos con la URL de la pestaña */
     }
@@ -117,15 +133,18 @@ async function domPublish(adapter, data) {
 
 async function publish(adapter, data) {
   assertLoggedIn(adapter);
-  const plan = adapter.api && adapter.api.verified && adapter.api.publish;
+  const eff = MLProfiles.resolve(adapter, await MLProfiles.load(adapter.id));
+  // Un plan que no sabe subir fotos no sirve para un anuncio con fotos: DOM.
+  const plan = eff.publish && !(eff.publish.photos === false && data.photos.length) ? eff.publish : null;
   if (plan) {
     const r = await tryApi(plan, listingVars(data.listing), data.photos);
+    await health(adapter, eff, r);
     if (r.ok) return { ok: true, externalUrl: r.externalUrl, via: "api" };
     if (r.fatal) throw new JobError(r.error, { code: "api_ambiguous", fatal: true });
     if (r.retry) throw new JobError(r.error, { code: "api_retry" });
     // r.fallback: no se envió nada que cree el anuncio -> seguimos por DOM
   }
-  return domPublish(adapter, data);
+  return domPublish(adapter, data, eff.confirm);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -159,15 +178,40 @@ async function domDelete(adapter) {
 
 async function retire(adapter, data) {
   assertLoggedIn(adapter);
-  const plan = adapter.api && adapter.api.verified && adapter.api.delete;
-  const id = plan && adapter.idFromUrl && data.externalUrl ? adapter.idFromUrl(data.externalUrl) : null;
-  if (plan && id) {
-    const r = await tryApi({ ...plan, idempotent: true }, { id, url: data.externalUrl }, []);
+  const eff = MLProfiles.resolve(adapter, await MLProfiles.load(adapter.id));
+  const id = eff.delete && eff.idFromUrl && data.externalUrl ? eff.idFromUrl(data.externalUrl) : null;
+  if (eff.delete && id) {
+    const r = await tryApi({ ...eff.delete, idempotent: true }, { id, url: data.externalUrl }, []);
+    await health(adapter, eff, r);
     if (r.ok) return { ok: true, externalUrl: data.externalUrl, via: "api" };
     if (r.retry || r.fatal) throw new JobError(r.error, { code: "api_retry" }); // borrar es idempotente: reintento normal
     // r.fallback -> DOM
   }
   return domDelete(adapter);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Autoprueba de un perfil aprendido: publicar un anuncio de prueba POR API y retirarlo POR API, en dos fases
+// (la retirada se hace en la página del propio anuncio, donde suelen estar el token CSRF y la sesión).
+// Ignora la verificación y el consentimiento a propósito: es precisamente lo que los otorga.
+// ---------------------------------------------------------------------------------------------------------------
+async function selftest(adapter, data) {
+  assertLoggedIn(adapter);
+  const profile = await MLProfiles.load(adapter.id);
+  if (!profile) throw new JobError("No hay perfil aprendido", { code: "no_profile", fatal: true });
+
+  if (data.phase === "publish") {
+    const r = await tryApi(profile.api.publish, listingVars(data.listing), data.photos);
+    if (!r.ok) throw new JobError(`Autoprueba, publicar por API: ${r.error}`, { code: "selftest_publish", fatal: true });
+    return { ok: true, via: "api", externalUrl: r.externalUrl, selftest: true };
+  }
+
+  const eff = MLProfiles.resolve(adapter, profile);
+  const id = eff.idFromUrl && data.externalUrl ? eff.idFromUrl(data.externalUrl) : null;
+  if (!id) throw new JobError("Autoprueba: no pude sacar el id del anuncio de prueba desde su URL", { code: "selftest_delete", fatal: true });
+  const r = await tryApi({ ...profile.api.delete, idempotent: true }, { id, url: data.externalUrl }, []);
+  if (!r.ok) throw new JobError(`Autoprueba, retirar por API: ${r.error}`, { code: "selftest_delete", fatal: true });
+  return { ok: true, via: "api", selftest: true };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -181,8 +225,9 @@ async function retire(adapter, data) {
   try {
     if (data.action === "publish") await report(await publish(adapter, data));
     else if (data.action === "delete") await report(await retire(adapter, data));
+    else if (data.action === "selftest") await report(await selftest(adapter, data));
     else throw new JobError(`Acción no soportada: ${data.action}`, { fatal: true });
   } catch (e) {
-    await report({ ok: false, error: String((e && e.message) || e), code: e.code || null, fatal: !!e.fatal });
+    await report({ ok: false, error: String((e && e.message) || e), code: e.code || null, fatal: !!e.fatal, selftest: data.action === "selftest" });
   }
 })();

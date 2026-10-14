@@ -8,6 +8,7 @@ const MLBridge = (() => {
   let ready = false;
   let authSeen = false;
   let readyWaiters = [];
+  let recHandler = null;
 
   window.addEventListener("message", (e) => {
     const d = e.data;
@@ -19,6 +20,8 @@ const MLBridge = (() => {
     } else if (d.type === "api-result" && pending.has(d.reqId)) {
       pending.get(d.reqId)(d.result);
       pending.delete(d.reqId);
+    } else if (d.type === "rec-call" && recHandler) {
+      recHandler(d.call);
     } else if (d.type === "tap-hit" && tapWaiters.has(d.id)) {
       tapWaiters.get(d.id)({ status: d.status, extracted: d.extracted || {} });
       tapWaiters.delete(d.id);
@@ -103,5 +106,9 @@ const MLBridge = (() => {
     };
   }
 
-  return { whenReady, waitForSession, api, expectTap };
+  // Modo aprendizaje: el gancho envía cada petición mutante grabada (ver lib/recorder.js).
+  const setRecording = (on) => send({ cmd: "rec", on: !!on });
+  const onRecCall = (fn) => (recHandler = fn);
+
+  return { whenReady, waitForSession, api, expectTap, setRecording, onRecCall };
 })();

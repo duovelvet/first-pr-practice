@@ -1,24 +1,18 @@
-// Adaptador de Wallapop.
+// Adaptador de Wallapop. Todo lo que depende del sitio vive aquí o en el PERFIL APRENDIDO, siempre como datos.
 //
-// Todo lo que depende del sitio real vive aquí, como DATOS. Estado actual:
-//   · dom.publish: selectores genéricos, SIN verificar contra el formulario real.
-//   · confirm:     null -> tras pulsar «publicar» se detecta el resultado por cambio de URL.
-//   · api:         verified=false -> el modo API está DESACTIVADO. Los planes (publish/delete) se rellenan a partir
-//                  del tráfico real capturado con tools/inspect-dom.js; hasta entonces no se llama a ninguna API
-//                  privada y todo se hace por DOM.
+// Estado en el repositorio (a propósito):
+//   · dom.publish / dom.delete: selectores y textos genéricos, SIN verificar contra el sitio real.
+//   · confirm, idFromUrl, api: vacíos y api.verified = false. No se escriben endpoints a mano: no se conocen, y
+//     «verified» no puede afirmarse en un fichero; solo puede demostrarse en el navegador de cada usuario.
 //
-// Cuando haya captura, rellenar (ejemplo de forma, valores inventados):
-//   confirm: { method: "POST", path: /^\/api\/v3\/items\/?$/, extract: { id: "id", slug: "web_slug" },
-//              urlTemplate: "https://es.wallapop.com/item/{{slug}}" }
-//   idFromUrl: (url) => (/-([a-z0-9]+)$/i.exec(new URL(url).pathname) || [])[1],
-//   api: { verified: true,
-//          publish: { requireSession: true, urlTemplate: "https://es.wallapop.com/item/{{slug}}",
-//                     steps: [{ name: "crear", method: "POST", url: "https://api.wallapop.com/api/v3/items",
-//                               body: { kind: "json", value: { title: "{{title}}", price: "{{price}}" } },
-//                               extract: { id: "id", slug: "web_slug" } }] },
-//          delete: { idempotent: true,
-//                    steps: [{ name: "borrar", method: "DELETE", url: "https://api.wallapop.com/api/v3/items/{{id}}",
-//                              expect: [200, 204, 404] }] } },
+// Cómo se activa el modo API (sin consola; ver README «Modo API: aprender y verificar»):
+//   1. Popup → Modo API → Wallapop → «Aprender»: el usuario sube y borra un anuncio de prueba con valores centinela.
+//   2. lib/plan-synth.js deduce de esa grabación el tap de confirmación, idFromUrl y los planes publicar/retirar.
+//      El resultado se guarda como PERFIL en chrome.storage.local (estado «draft»).
+//   3. «Verificar»: la extensión publica y retira un anuncio de prueba POR API. Solo si funciona, el perfil pasa a
+//      «verified» (ligado al hash del plan) y lib/profiles.js lo fusiona con este adaptador (MLProfiles.resolve).
+//   4. Si el sitio cambia y la API responde distinto 2 veces seguidas, el perfil pasa a «stale» y vuelve el DOM.
+// Un adaptador puede fijar api/confirm/idFromUrl aquí solo si se verificaron contra el sitio real (api.verified = true).
 MLAdapters.register({
   id: "wallapop",
   hostRe: /(^|\.)wallapop\.(com|net|es)$/i,

@@ -30,8 +30,97 @@ async function renderRuns() {
   }
 }
 
+// ---- Modo API: aprender / verificar ---------------------------------------------------------------------------
+const MARKETS = [["wallapop", "Wallapop"], ["todocoleccion", "Todocolección"], ["vinted", "Vinted"], ["milanuncios", "Milanuncios"]];
+const call = (msg) => chrome.runtime.sendMessage(msg);
+
+function el(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text != null) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+function button(label, onClick, secondary) {
+  const b = el("button", label, secondary ? "secondary" : "");
+  b.style.marginRight = "6px";
+  b.onclick = async () => {
+    b.disabled = true;
+    try {
+      await onClick();
+    } finally {
+      await renderApi();
+    }
+  };
+  return b;
+}
+
+async function renderApi() {
+  const { profiles = {}, rec } = (await call({ type: "profiles-get" })) || {};
+  const box = $("apiList");
+  box.textContent = "";
+  for (const [id, name] of MARKETS) {
+    const p = profiles[id];
+    const wrap = el("div", null, "mk");
+    wrap.append(el("h3", name));
+
+    if (rec && rec.marketplace === id) {
+      wrap.append(el("p", "● Grabando. En la pestaña que se abrió, usa EXACTAMENTE estos valores:", "warn"));
+      const ul = el("ul");
+      ul.append(el("li", `Título: ${rec.sentinels.title}`), el("li", `Descripción: ${rec.sentinels.description}`), el("li", `Precio: ${rec.sentinels.price}`));
+      ul.append(el("li", "Sube UNA foto, publica, abre el anuncio y ELIMÍNALO."));
+      wrap.append(ul);
+      wrap.append(button("Terminar y analizar", async () => {
+        const r = await call({ type: "rec-stop" });
+        if (r.error || r.ok === false) alert("No se pudo deducir el perfil:\n" + ((r.error && (r.error.message || r.error)) || "") + "\n" + ((r.report && r.report.warnings) || []).join("\n"));
+      }));
+    } else if (!p) {
+      wrap.append(el("p", "Sin perfil: se usa la página (DOM).", "muted"));
+      wrap.append(button("Aprender", async () => { await call({ type: "rec-start", marketplace: id }); }));
+    } else {
+      const st = p.status;
+      wrap.append(el("p", st === "verified" ? "✔ Verificado: usa la API" : st === "stale" ? "⚠ Desactivado: el sitio respondió distinto" : "Perfil aprendido, sin verificar (se usa la página)", st === "verified" ? "ok" : "warn"));
+      if (st === "stale" && p.staleReason) wrap.append(el("p", p.staleReason, "muted"));
+      const pub = p.api && p.api.publish;
+      const baked = (pub && pub.bakedFields) || [];
+      if (pub) {
+        wrap.append(el("p", `Publicar: ${pub.steps.length} paso(s)${pub.photos ? ", con fotos" : ", SIN fotos (esos anuncios van por la página)"}. Retirar: ${p.api.delete ? "sí" : "no aprendido"}.`, "muted"));
+      }
+      if (baked.length) {
+        wrap.append(el("p", "Se copiarían del anuncio de prueba a TODOS los anuncios:", "muted"));
+        const ul = el("ul");
+        ul.append(...baked.slice(0, 8).map((b) => el("li", `${b.path} = ${b.value}`)), ...(baked.length > 8 ? [el("li", `… y ${baked.length - 8} más`)] : []));
+        wrap.append(ul);
+        const lab = el("label", " Entiendo que la categoría/envío/ubicación serán los de la prueba");
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.style.width = "auto";
+        cb.checked = !!(p.consent && p.consent.baked);
+        cb.onchange = async () => { await call({ type: "profile-consent", marketplace: id, baked: cb.checked }); };
+        lab.prepend(cb);
+        wrap.append(lab);
+      }
+      if (p.lastSelftest && !p.lastSelftest.ok) {
+        wrap.append(el("p", `Autoprueba fallida: ${p.lastSelftest.error}${p.lastSelftest.orphan ? " — REVISA si quedó un anuncio de prueba" + (p.lastSelftest.url ? ": " + p.lastSelftest.url : "") : ""}`, "bad"));
+      }
+      for (const w of p.warnings || []) wrap.append(el("p", "⚠ " + w, "warn"));
+      if (st !== "verified") {
+        wrap.append(button("Verificar con anuncio de prueba", async () => {
+          const r = await call({ type: "selftest-start", marketplace: id });
+          if (r && r.error) alert(r.error);
+        }));
+      }
+      wrap.append(button(st === "verified" ? "Desactivar y olvidar" : "Volver a aprender", async () => {
+        await call({ type: "profile-delete", marketplace: id });
+        if (st !== "verified") await call({ type: "rec-start", marketplace: id });
+      }, true));
+    }
+    box.append(wrap);
+  }
+}
+
 async function refreshStatus() {
   renderRuns();
+  renderApi();
   try {
     const rows = await ML.select("sync_queue?status=in.(pending,processing)&select=id,status");
     const pending = rows.filter((r) => r.status === "pending").length;

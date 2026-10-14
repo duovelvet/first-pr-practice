@@ -33,6 +33,7 @@
 
   const origFetch = window.fetch;
   const taps = new Map(); // id -> { method, path: RegExp, extract, once }
+  let recording = false; // modo aprendizaje: se activa desde el popup (ver lib/recorder.js)
   let session = { headers: {}, hasAuth: false, at: 0 };
 
   const post = (msg) => window.postMessage({ [TAG]: true, dir: "to-content", ...msg }, location.origin);
@@ -44,6 +45,54 @@
     const copy = {};
     for (const k of names) if (!DROP_HEADER.test(k)) copy[k] = headers[k];
     session = { headers: copy, hasAuth: true, at: Date.now() };
+  };
+
+
+  // ---- grabación (modo aprendizaje) -----------------------------------------------------------------------
+  // Solo corre mientras el usuario graba. Se anonimizan los SECRETOS (tokens, contraseñas…) pero no los datos
+  // del anuncio de prueba: el sintetizador los necesita para ver en qué campo viaja cada valor centinela.
+  const SECRET_KEY = /pass(word)?|secret|token|authoriz|cookie|session|jwt|bearer/i;
+  const scrub = (v, key = "") => {
+    if (v === null || v === undefined) return v;
+    if (Array.isArray(v)) return v.map((x) => scrub(x, key));
+    if (typeof v === "object") return Object.fromEntries(Object.keys(v).slice(0, 80).map((k) => [k, scrub(v[k], k)]));
+    return SECRET_KEY.test(key) ? "<redacted>" : v;
+  };
+  const addField = (acc, k, v) => {
+    acc[k] = k in acc ? [].concat(acc[k], v) : v;
+  };
+  const snapshotBody = (body, contentType) => {
+    if (body == null) return { type: "none" };
+    if (typeof body === "string") {
+      try {
+        return { type: "json", json: scrub(JSON.parse(body)) };
+      } catch {}
+      if (/urlencoded/i.test(contentType || "") || /^[^=&\s]+=/.test(body)) return snapshotBody(new URLSearchParams(body));
+      return { type: "none" };
+    }
+    if (body instanceof URLSearchParams) {
+      const f = {};
+      for (const [k, v] of body.entries()) addField(f, k, SECRET_KEY.test(k) ? "<redacted>" : v);
+      return { type: "urlencoded", fields: f };
+    }
+    if (typeof FormData !== "undefined" && body instanceof FormData) {
+      const f = {};
+      const files = [];
+      for (const [k, v] of body.entries()) {
+        if (typeof v === "string") addField(f, k, SECRET_KEY.test(k) ? "<redacted>" : v);
+        else files.push({ field: k, type: v.type, size: v.size });
+      }
+      return { type: "multipart", fields: f, files };
+    }
+    if (typeof Blob !== "undefined" && body instanceof Blob) return { type: "multipart", fields: {}, files: [{ field: "file", type: body.type, size: body.size }] };
+    return { type: "none" };
+  };
+  const hasSessionHeader = (headers) => Object.keys(headers).some((k) => SESSION_HEADER.test(k));
+  const recordCall = (meta, reqSnap, hasSession, res) => {
+    post({
+      type: "rec-call",
+      call: { kind: "xhr", t: meta.t0, method: meta.method, url: meta.url.href, hasSession, req: reqSnap, res },
+    });
   };
 
   // ---- taps -----------------------------------------------------------------------------------------------
@@ -97,19 +146,36 @@
   // ---- fetch ----------------------------------------------------------------------------------------------
   window.fetch = function (input, init) {
     let meta = null;
+    let rec = null;
     try {
       const isReq = typeof Request !== "undefined" && input instanceof Request;
       const url = new URL(isReq ? input.url : String(input), location.href);
       if (family.test(url.hostname)) {
         const method = String((init && init.method) || (isReq ? input.method : "GET")).toUpperCase();
-        noteSession(plainHeaders(isReq && input.headers, init && init.headers));
-        meta = { method, url };
+        const headers = plainHeaders(isReq && input.headers, init && init.headers);
+        noteSession(headers);
+        meta = { method, url, t0: Date.now() };
+        if (recording && method !== "GET") {
+          const ct = Object.keys(headers).find((k) => k.toLowerCase() === "content-type");
+          rec = { req: snapshotBody(init && init.body, ct ? headers[ct] : ""), hasSession: hasSessionHeader(headers) };
+        }
       }
     } catch {}
     const p = origFetch.apply(this, arguments);
     if (meta) {
       p.then((res) => {
         try {
+          if (rec) {
+            const ct = res.headers.get("content-type") || "";
+            const clone = res.clone();
+            (/json/i.test(ct) ? clone.text() : Promise.resolve("")).then((text) => {
+              let json;
+              try {
+                if (text && text.length <= JSON_CAP) json = scrub(JSON.parse(text));
+              } catch {}
+              recordCall(meta, rec.req, rec.hasSession, { status: res.status, location: res.headers.get("location") || undefined, finalUrl: res.url || undefined, json });
+            });
+          }
           if (!taps.size) return; // un tap puede registrarse mientras la petición está en vuelo
           const clone = res.clone();
           onDone({ ...meta, status: res.status, header: (n) => res.headers.get(n), readText: () => clone.text() });
@@ -132,24 +198,35 @@
     if (this.__mlx) this.__mlx.headers[k] = v;
     return xSet.apply(this, arguments);
   };
-  XP.send = function () {
+  XP.send = function (body) {
     const m = this.__mlx;
     if (m && family.test(m.url.hostname)) {
       noteSession(m.headers);
-      {
-        this.addEventListener("loadend", () => {
-          try {
-            if (!taps.size) return;
-            onDone({
-              method: m.method,
-              url: m.url,
-              status: this.status,
-              header: (n) => this.getResponseHeader(n),
-              readText: async () => (this.responseType === "" || this.responseType === "text" ? this.responseText : JSON.stringify(this.response)),
-            });
-          } catch {}
-        });
+      let rec = null;
+      if (recording && m.method !== "GET") {
+        const ctKey = Object.keys(m.headers).find((k) => k.toLowerCase() === "content-type");
+        rec = { t0: Date.now(), req: snapshotBody(body, ctKey ? m.headers[ctKey] : ""), hasSession: hasSessionHeader(m.headers) };
       }
+      this.addEventListener("loadend", () => {
+        try {
+          if (rec) {
+            const ct = this.getResponseHeader("content-type") || "";
+            let json;
+            try {
+              if (/json/i.test(ct) && (this.responseType === "" || this.responseType === "text") && this.responseText.length <= JSON_CAP) json = scrub(JSON.parse(this.responseText));
+            } catch {}
+            recordCall({ ...m, t0: rec.t0 }, rec.req, rec.hasSession, { status: this.status, location: this.getResponseHeader("location") || undefined, finalUrl: this.responseURL || undefined, json });
+          }
+          if (!taps.size) return;
+          onDone({
+            method: m.method,
+            url: m.url,
+            status: this.status,
+            header: (n) => this.getResponseHeader(n),
+            readText: async () => (this.responseType === "" || this.responseType === "text" ? this.responseText : JSON.stringify(this.response)),
+          });
+        } catch {}
+      });
     }
     return xSend.apply(this, arguments);
   };
@@ -176,9 +253,12 @@
       if (b && b.kind === "json") {
         body = JSON.stringify(b.value);
         if (!Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) headers["Content-Type"] = "application/json";
+      } else if (b && b.kind === "urlencoded") {
+        body = new URLSearchParams();
+        for (const [k, v] of Object.entries(b.fields || {})) [].concat(v).forEach((x) => body.append(k, String(x)));
       } else if (b && b.kind === "form") {
         body = new FormData();
-        for (const [k, v] of Object.entries(b.fields || {})) body.append(k, String(v));
+        for (const [k, v] of Object.entries(b.fields || {})) [].concat(v).forEach((x) => body.append(k, String(x)));
         for (const f of b.files || []) {
           const blob = await (await origFetch(f.dataUrl)).blob();
           body.append(f.field, new File([blob], f.name || "foto.jpg", { type: f.type || blob.type || "image/jpeg" }));
@@ -201,7 +281,7 @@
           if (text.length <= JSON_CAP) json = JSON.parse(text);
         } catch {}
       }
-      return { sent: true, status: res.status, ok: res.ok, contentType, location: res.headers.get("location") || null, json };
+      return { sent: true, status: res.status, ok: res.ok, contentType, location: res.headers.get("location") || null, finalUrl: res.url || null, redirected: !!res.redirected, json };
     } catch (e) {
       return { sent: true, error: ctl.signal.aborted ? "timeout" : "network", message: String((e && e.message) || e) };
     } finally {
@@ -224,6 +304,7 @@
         });
       } catch {}
     } else if (d.cmd === "untap") taps.delete(d.id);
+    else if (d.cmd === "rec") recording = !!d.on;
     else if (d.cmd === "api" && d.reqId) {
       doApi(d.req || {}).then((result) => post({ type: "api-result", reqId: d.reqId, result }));
     }
