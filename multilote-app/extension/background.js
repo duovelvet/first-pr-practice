@@ -280,12 +280,12 @@ async function finishAutoLearn(tabId, entry, r) {
       await chrome.tabs.update(tabId, { url: r.externalUrl });
       return;
     }
-    return closeAuto({ ok: false, orphan: !!r.ok, error: r.ok ? "Se publicó el anuncio de prueba pero no se obtuvo su URL: bórralo a mano." : r.error });
+    return closeAuto({ ok: false, diag: r.diag || null, orphan: !!r.ok, error: r.ok ? "Se publicó el anuncio de prueba pero no se obtuvo su URL: bórralo a mano." : r.error });
   }
   if (!r.ok) return closeAuto({ ok: false, orphan: true, url: entry.externalUrl, error: `No se pudo borrar el anuncio de prueba: ${r.error}` });
 
   await new Promise((res) => setTimeout(res, 1500)); // deja llegar las últimas peticiones grabadas
-  const s = await stopRecording(); // sintetiza y guarda el perfil (borrador)
+  const s = await stopRecording(); // sintetiza y guarda el perfil (borrador); guarda también lastDiag
   await chrome.storage.session.remove("auto");
   if (!s.ok) {
     const why = (s.error && (s.error.message || s.error.code)) || "grabación insuficiente";
@@ -309,13 +309,33 @@ async function discardAutoLearn(tabId, entry, error) {
   await setAutoLast(entry.marketplace, { ok: false, orphan: entry.mutating || entry.phase === "delete", url: entry.externalUrl || null, error, at: Date.now() });
 }
 
+// Resumen SIN secretos ni valores del usuario de lo que vio la grabación: sirve para saber por qué no se aprende.
+function recDiag(rec, calls, urls) {
+  const marker = rec.sentinels.marker;
+  const short = (u) => { try { const x = new URL(u); return x.host + x.pathname.replace(/[0-9a-f-]{8,}|\d{5,}/gi, ":id").slice(0, 70); } catch { return String(u).slice(0, 80); } };
+  return {
+    marketplace: rec.marketplace,
+    at: Date.now(),
+    totalCalls: calls.length,
+    byKind: calls.reduce((a, c) => ((a[c.kind || "?"] = (a[c.kind || "?"] || 0) + 1), a), {}),
+    calls: calls.slice(0, 40).map((c) => ({
+      kind: c.kind, method: c.method, url: short(c.url), status: c.res && c.res.status, session: !!c.hasSession,
+      body: c.req && c.req.type, bodyKind: c.req && (c.req.kind || undefined), files: (c.req && c.req.files && c.req.files.length) || 0,
+      hasTitle: JSON.stringify(c.req || {}).includes(marker), resHasTitle: JSON.stringify(c.res || {}).includes(marker),
+    })),
+    urls: urls.slice(0, 30).map((u) => short(u.url)),
+  };
+}
+
 async function stopRecording() {
   return serial(async () => {
     const { rec, recCalls = [], recUrls = [] } = await chrome.storage.session.get(["rec", "recCalls", "recUrls"]);
     if (!rec) throw new Error("No hay ninguna grabación en curso");
     const r = MLSynth.synthesize({ marketplace: rec.marketplace, calls: recCalls, urls: recUrls, sentinels: rec.sentinels });
     await chrome.storage.session.remove(["rec", "recCalls", "recUrls"]);
-    if (!r.ok) return { ok: false, error: r.error, report: r.report, calls: recCalls.length };
+    const diag = recDiag(rec, recCalls, recUrls);
+    await chrome.storage.local.set({ lastDiag: diag });
+    if (!r.ok) return { ok: false, error: r.error, report: r.report, calls: recCalls.length, diag };
     await MLProfiles.update(rec.marketplace, () => MLProfiles.finalize({ ...r.profile, warnings: r.report.warnings }));
     return { ok: true, report: r.report, calls: recCalls.length };
   });
@@ -435,6 +455,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         rec: (await chrome.storage.session.get("rec")).rec || null,
         auto: (await chrome.storage.session.get("auto")).auto || null,
         autoLast: (await chrome.storage.local.get("autoLast")).autoLast || {},
+        diag: (await chrome.storage.local.get("lastDiag")).lastDiag || null,
       }))()
     );
     return true;

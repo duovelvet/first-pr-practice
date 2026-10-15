@@ -68,7 +68,7 @@
         return { type: "json", json: scrub(JSON.parse(body)) };
       } catch {}
       if (/urlencoded/i.test(contentType || "") || /^[^=&\s]+=/.test(body)) return snapshotBody(new URLSearchParams(body));
-      return { type: "none" };
+      return { type: "none", kind: "string", len: body.length, ct: String(contentType || "").slice(0, 60) };
     }
     if (body instanceof URLSearchParams) {
       const f = {};
@@ -85,7 +85,7 @@
       return { type: "multipart", fields: f, files };
     }
     if (typeof Blob !== "undefined" && body instanceof Blob) return { type: "multipart", fields: {}, files: [{ field: "file", type: body.type, size: body.size }] };
-    return { type: "none" };
+    return { type: "none", kind: (body && body.constructor && body.constructor.name) || typeof body };
   };
   const hasSessionHeader = (headers) => Object.keys(headers).some((k) => SESSION_HEADER.test(k));
   const recordCall = (meta, reqSnap, hasSession, res) => {

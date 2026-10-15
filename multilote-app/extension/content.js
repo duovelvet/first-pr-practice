@@ -13,11 +13,28 @@
 // otra vía ni la cola reintenta, porque podría publicarse dos veces. Se queda en «error» para revisión humana.
 
 class JobError extends Error {
-  constructor(message, { code = null, fatal = false } = {}) {
+  constructor(message, { code = null, fatal = false, diag = null } = {}) {
     super(message);
     this.code = code;
     this.fatal = fatal;
+    this.diag = diag;
   }
+}
+
+// Descripción de la página SIN valores ni textos del usuario: estructura de campos y botones. Sirve para afinar
+// selectores cuando el aprendizaje automático no reconoce el formulario.
+function pageProbe() {
+  const cut = (v, n = 40) => String(v || "").replace(/\s+/g, " ").trim().slice(0, n);
+  const vis = (el) => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+  return {
+    path: location.pathname.slice(0, 80),
+    title: cut(document.title, 60),
+    inputs: [...document.querySelectorAll("input,textarea,select")].slice(0, 30).map((e) => ({ tag: e.tagName.toLowerCase(), type: e.type || null, name: cut(e.name, 30), id: cut(e.id, 30), ph: cut(e.placeholder, 30), vis: vis(e) })),
+    buttons: [...document.querySelectorAll("button,[role=button],input[type=submit]")].slice(0, 25).map((b) => cut(b.textContent || b.value, 30)),
+    links: [...document.querySelectorAll("a[href]")].filter((a) => /vender|sell|publicar|subir|upload|nuevo/i.test(a.textContent + a.getAttribute("href"))).slice(0, 10).map((a) => ({ t: cut(a.textContent, 30), h: cut(a.getAttribute("href"), 60) })),
+    iframes: document.querySelectorAll("iframe").length,
+    login: !!document.querySelector("input[type=password]"),
+  };
 }
 
 function assertLoggedIn(adapter) {
@@ -264,7 +281,7 @@ async function autolearn(adapter, data) {
       }
     }
     sessionStorage.removeItem("mlHop");
-    throw new JobError("No encontré el formulario de subida ni un enlace para vender: aprende a mano desde el popup (Aprender a mano)", { code: "form_not_found" });
+    throw new JobError("No encontré el formulario de subida ni un enlace para vender: aprende a mano desde el popup (Aprender a mano)", { code: "form_not_found", diag: pageProbe() });
   }
   sessionStorage.removeItem("mlHop");
   return domPublish(adapter, data, null, sel);
@@ -285,6 +302,6 @@ async function autolearn(adapter, data) {
     else if (data.action === "autolearn") await report(await autolearn(adapter, data));
     else throw new JobError(`Acción no soportada: ${data.action}`, { fatal: true });
   } catch (e) {
-    await report({ ok: false, error: String((e && e.message) || e), code: e.code || null, fatal: !!e.fatal, selftest: data.action === "selftest" || data.action === "autolearn" });
+    await report({ ok: false, error: String((e && e.message) || e), code: e.code || null, fatal: !!e.fatal, diag: e.diag || null, selftest: data.action === "selftest" || data.action === "autolearn" });
   }
 })();

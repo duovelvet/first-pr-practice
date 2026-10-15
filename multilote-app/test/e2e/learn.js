@@ -259,6 +259,7 @@ const until = async (fn, ms = 60000, step = 250) => { const t0 = Date.now(); whi
   let r = await sw.evaluate(() => stopRecording());
   check("sin actividad → error claro «no_create»", r.ok === false && r.error.code === "no_create", JSON.stringify(r.error));
   check("no se guardó ningún perfil", (await profile("wallapop")) === null);
+  check("la grabación fallida deja un diagnóstico sin secretos", r.diag?.marketplace === "wallapop" && Array.isArray(r.diag.calls) && !JSON.stringify(r.diag).includes(TOKEN), JSON.stringify(r.diag));
   await closeTabs();
 
   // ---------------------------------------------------------------------------------------------------------
@@ -438,6 +439,7 @@ const until = async (fn, ms = 60000, step = 250) => { const t0 = Date.now(); whi
   W.noForm = false;
   check("error claro y sin anuncio huérfano", e.last?.ok === false && !e.last.orphan && /formulario/i.test(e.last.error || "") && W.items.size === itemsN, JSON.stringify(e.last));
   check("no se guardó ningún perfil", e.pr === null);
+  check("el fallo trae un diagnóstico de la página (campos y botones, sin valores)", Array.isArray(e.last?.diag?.inputs) && Array.isArray(e.last.diag.buttons) && e.last.diag.path.includes("/app/catalog/upload"), JSON.stringify(e.last?.diag));
   const rec1 = await sw.evaluate(() => chrome.storage.session.get(["rec", "auto"]));
   check("la grabación quedó cerrada tras el fallo", !rec1.rec && !rec1.auto, JSON.stringify(rec1));
 

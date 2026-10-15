@@ -58,6 +58,20 @@ function button(label, onClick, secondary) {
 let autoTimer = null;
 
 // Resultado del último aprendizaje automático de este marketplace.
+function diagBox(wrap, data, label) {
+  if (!data) return;
+  const d = el("details");
+  d.append(el("summary", label, "muted"));
+  const ta = document.createElement("textarea");
+  ta.readOnly = true;
+  ta.rows = 6;
+  ta.style.cssText = "width:100%;font-size:11px;box-sizing:border-box";
+  ta.value = JSON.stringify(data, null, 1);
+  d.append(ta);
+  d.append(button("Copiar", async () => { ta.select(); try { await navigator.clipboard.writeText(ta.value); } catch { document.execCommand("copy"); } }, true));
+  wrap.append(d);
+}
+
 function autoNote(wrap, last) {
   if (!last) return;
   if (last.ok) {
@@ -65,11 +79,12 @@ function autoNote(wrap, last) {
     for (const w of last.warnings || []) wrap.append(el("p", "⚠ " + w, "warn"));
   } else {
     wrap.append(el("p", `✖ Aprendizaje automático: ${last.error}${last.orphan ? " — REVISA si quedó un anuncio de prueba" + (last.url ? ": " + last.url : "") : ""}`, "bad"));
+    diagBox(wrap, last.diag, "Diagnóstico de la página (copiar y enviar)");
   }
 }
 
 async function renderApi() {
-  const { profiles = {}, rec, auto, autoLast = {} } = (await call({ type: "profiles-get" })) || {};
+  const { profiles = {}, rec, auto, autoLast = {}, diag } = (await call({ type: "profiles-get" })) || {};
   clearTimeout(autoTimer);
   if (auto) autoTimer = setTimeout(renderApi, 2000); // mientras aprende solo, refresca el estado
   const box = $("apiList");
@@ -89,10 +104,11 @@ async function renderApi() {
       wrap.append(ul);
       wrap.append(button("Terminar y analizar", async () => {
         const r = await call({ type: "rec-stop" });
-        if (r.error || r.ok === false) alert("No se pudo deducir el perfil:\n" + ((r.error && (r.error.message || r.error)) || "") + "\n" + ((r.report && r.report.warnings) || []).join("\n"));
+        if (r.error || r.ok === false) alert("No se pudo deducir el perfil:\n" + ((r.error && (r.error.message || r.error)) || "") + "\n" + ((r.report && r.report.warnings) || []).join("\n") + "\n\nAbre «Diagnóstico de la grabación» en el popup y copia su contenido.");
       }));
     } else if (!p) {
       wrap.append(el("p", "Sin perfil: se usa la página (DOM).", "muted"));
+      if (diag && diag.marketplace === id) diagBox(wrap, diag, "Diagnóstico de la última grabación (copiar y enviar)");
       autoNote(wrap, autoLast[id]);
       wrap.append(button("Aprender solo y verificar", async () => {
         if (!confirm(`Se publicará y se borrará un anuncio de prueba REAL (MLTEST-…) en tu cuenta de ${name}, y luego otro para verificar. ¿Continuar?`)) return;
