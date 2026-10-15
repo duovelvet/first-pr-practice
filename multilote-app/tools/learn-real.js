@@ -12,7 +12,12 @@
 // extensión en ese mismo perfil (o úsalo como tu navegador de trabajo) para que la cola use la API.
 //
 // Importante: crea y borra anuncios REALES de prueba (MLTEST-…) en tu cuenta. Por eso exige --yes.
-// Requiere Playwright con Chromium (npx playwright install chromium). Chrome de marca ≥137 ignora --load-extension.
+// Usa tu Google Chrome REAL (no el Chromium de Playwright): busca chrome.exe en las rutas habituales de Windows (o usa
+// --chrome RUTA / CHROME_PATH); con --chromium usa el de Playwright. Cierra antes todas las ventanas de Chrome que usen
+// ese perfil. Ojo: Chrome sigue siendo un navegador CONTROLADO por Playwright; Google puede mostrar igualmente su aviso
+// en el inicio de sesión con Google. Esta herramienta no intenta ocultar la automatización: si pasa, inicia sesión en
+// el marketplace con correo y contraseña, o usa la vía sin Playwright (README: cargar la extensión en tu Chrome normal).
+// Chrome de marca ≥137 ignora --load-extension por línea de comandos: si pasa, el script lo dice (ver mensaje).
 // Escribe un informe SIN secretos en learn-real-report.json.
 const fs = require("fs"), path = require("path"), os = require("os"), readline = require("readline");
 
@@ -23,8 +28,24 @@ const EXT = path.resolve(__dirname, "../extension");
 const REPORT = path.resolve(String(arg("report", "learn-real-report.json")));
 const TIMEOUT_MIN = Number(arg("timeout", 6));
 
+// Ruta de Chrome: --chrome RUTA > CHROME_PATH > rutas habituales (Windows, macOS, Linux). Sin --chromium no hay
+// vuelta atrás silenciosa al Chromium de Playwright.
+function findChrome() {
+  const given = arg("chrome", process.env.CHROME_PATH);
+  if (given && given !== true) return fs.existsSync(given) ? given : null;
+  const pf = process.env["ProgramFiles"] || "C:\\Program Files", pf86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)", local = process.env.LOCALAPPDATA;
+  const cands = [
+    path.join(pf, "Google/Chrome/Application/chrome.exe"),
+    path.join(pf86, "Google/Chrome/Application/chrome.exe"),
+    local && path.join(local, "Google/Chrome/Application/chrome.exe"),
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
+  ].filter(Boolean);
+  return cands.find((c) => fs.existsSync(c)) || null;
+}
+
 if (arg("help")) {
-  console.log("Uso: node tools/learn-real.js --yes [--markets wallapop,todocoleccion] [--profile DIR] [--timeout MIN] [--report FICHERO]");
+  console.log("Uso: node tools/learn-real.js --yes [--markets wallapop,todocoleccion] [--profile DIR] [--timeout MIN] [--report FICHERO] [--chrome RUTA | --chromium]");
   process.exit(0);
 }
 if (!arg("yes")) {
@@ -54,11 +75,24 @@ const summarize = (p) => p && {
 
 (async () => {
   fs.mkdirSync(PROFILE, { recursive: true });
+  const useChromium = !!arg("chromium");
+  const chromePath = useChromium ? (process.env.CHROME_PATH || undefined) : findChrome();
+  if (!useChromium && !chromePath) {
+    console.error("No encuentro Google Chrome. Indica la ruta: --chrome \"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe\" (o --chromium para usar el de Playwright).");
+    process.exit(2);
+  }
+  console.log(`Navegador: ${chromePath || "Chromium de Playwright"}\nPerfil: ${PROFILE}`);
   const ctx = await chromium.launchPersistentContext(PROFILE, {
-    headless: false, ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
+    headless: false, ...(chromePath ? { executablePath: chromePath } : {}),
+    ignoreDefaultArgs: ["--disable-extensions"], // Playwright lo pone por defecto y impediría cargar la extensión
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`],
   });
-  const sw = ctx.serviceWorkers()[0] || (await ctx.waitForEvent("serviceworker", { timeout: 20000 }));
+  const sw = ctx.serviceWorkers()[0] || (await ctx.waitForEvent("serviceworker", { timeout: 20000 }).catch(() => null));
+  if (!sw) {
+    await ctx.close().catch(() => {});
+    console.error("La extensión no se cargó: tu Chrome (≥137 de marca) ignora --load-extension. Carga la carpeta extension/ a mano en chrome://extensions (modo desarrollador) en tu Chrome normal y pulsa «Aprender solo y verificar» en el popup, o usa --chromium.");
+    process.exit(2);
+  }
   const report = { at: new Date().toISOString(), profileDir: PROFILE, results: {} };
   let exit = 0;
 
