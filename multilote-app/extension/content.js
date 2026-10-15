@@ -32,7 +32,9 @@ function pageProbe() {
     inputs: [...document.querySelectorAll("input,textarea,select")].slice(0, 30).map((e) => ({ tag: e.tagName.toLowerCase(), type: e.type || null, name: cut(e.name, 30), id: cut(e.id, 30), ph: cut(e.placeholder, 30), vis: vis(e) })),
     buttons: [...document.querySelectorAll("button,[role=button],input[type=submit]")].slice(0, 25).map((b) => cut(b.textContent || b.value, 30)),
     links: [...document.querySelectorAll("a[href]")].filter((a) => /vender|sell|publicar|subir|upload|nuevo/i.test(a.textContent + a.getAttribute("href"))).slice(0, 10).map((a) => ({ t: cut(a.textContent, 30), h: cut(a.getAttribute("href"), 60) })),
-    iframes: document.querySelectorAll("iframe").length,
+    heads: [...document.querySelectorAll("h1,h2,h3,[role=heading]")].slice(0, 8).map((h) => cut(h.textContent, 50)),
+    iframes: [...document.querySelectorAll("iframe")].slice(0, 8).map((f) => { try { const u = new URL(f.src, location.href); return u.host + u.pathname.slice(0, 40); } catch { return "?"; } }),
+    fileInputs: document.querySelectorAll("input[type=file]").length,
     login: !!document.querySelector("input[type=password]"),
   };
 }
@@ -264,16 +266,23 @@ async function autolearn(adapter, data) {
 
   const base = adapter.dom.publish;
   const sel = { ...base, title: joinSel(base.title, LEARN_SEL.title), description: joinSel(base.description, LEARN_SEL.description), price: joinSel(base.price, LEARN_SEL.price) };
-  if (!(await MLDom.waitFor(sel.title, 8000))) {
+  const probes = JSON.parse(sessionStorage.getItem("mlProbes") || "[]");
+  if (!(await MLDom.waitFor(sel.title, 12000))) {
+    probes.push(pageProbe());
+    sessionStorage.setItem("mlProbes", JSON.stringify(probes.slice(-4)));
     if (!sessionStorage.getItem("mlHop")) {
-      const link = [...document.querySelectorAll("a[href]")].find((a) => {
-        try {
-          const u = new URL(a.href);
-          return u.protocol === "https:" && MLAdapters.forHost(u.hostname) === adapter && SELL_LINK.test(u.pathname + " " + a.textContent);
-        } catch {
-          return false;
-        }
-      });
+      // El enlace más claro de «subir»: prioriza /upload en la ruta, luego el texto, y descarta la propia página.
+      const score = (a) => (/upload|nuevo|new/i.test(a.pathname) ? 4 : 0) + (/s[uú]belo|subir|publicar|vender|upload/i.test(a.textContent) ? 2 : 0) + (/sell/i.test(a.pathname) ? 1 : 0);
+      const link = [...document.querySelectorAll("a[href]")]
+        .filter((a) => {
+          try {
+            const u = new URL(a.href);
+            return u.protocol === "https:" && u.pathname !== location.pathname && MLAdapters.forHost(u.hostname) === adapter && SELL_LINK.test(u.pathname + " " + a.textContent);
+          } catch {
+            return false;
+          }
+        })
+        .sort((a, b) => score(b) - score(a))[0];
       if (link) {
         sessionStorage.setItem("mlHop", "1");
         location.href = link.href;
@@ -281,8 +290,10 @@ async function autolearn(adapter, data) {
       }
     }
     sessionStorage.removeItem("mlHop");
-    throw new JobError("No encontré el formulario de subida ni un enlace para vender: aprende a mano desde el popup (Aprender a mano)", { code: "form_not_found", diag: pageProbe() });
+    sessionStorage.removeItem("mlProbes");
+    throw new JobError("No encontré el formulario de subida ni un enlace para vender: aprende a mano desde el popup (Aprender a mano)", { code: "form_not_found", diag: { ...probes[probes.length - 1], pages: probes } });
   }
+  sessionStorage.removeItem("mlProbes");
   sessionStorage.removeItem("mlHop");
   return domPublish(adapter, data, null, sel);
 }
