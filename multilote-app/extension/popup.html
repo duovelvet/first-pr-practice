@@ -41,19 +41,20 @@
         <button id="logout" class="secondary">Salir</button>
       </div>
       <p class="row"><a id="openWeb" href="#" target="_blank">Abrir panel web</a></p>
-      <details id="apiBox" style="margin-top: 12px">
-        <summary class="muted" style="cursor: pointer">Modo API (avanzado)</summary>
-        <p class="muted">
-          La extensión puede <b>aprender</b> cómo publica y retira anuncios cada web mientras tú subes y borras un anuncio de
-          prueba a mano. Solo usa la API tras <b>verificarla</b> con una autoprueba; si no, sigue por la página.
-        </p>
-        <div id="apiList"></div>
-      </details>
       <div id="runsBox" class="hidden">
         <p class="muted" style="margin-top: 12px">Últimos resultados</p>
         <ul id="runs" style="list-style: none; margin: 0; padding: 0; font-size: 12px"></ul>
       </div>
     </div>
+
+    <details id="apiBox" style="margin-top: 12px">
+      <summary class="muted" style="cursor: pointer">Modo API (avanzado)</summary>
+      <p class="muted">
+        La extensión puede <b>aprender</b> cómo publica y retira anuncios cada web mientras tú subes y borras un anuncio de
+        prueba a mano. Solo usa la API tras <b>verificarla</b> con una autoprueba; si no, sigue por la página.
+      </p>
+      <div id="apiList"></div>
+    </details>
 
     <script src="config.js"></script>
     <script src="api.js"></script>

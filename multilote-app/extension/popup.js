@@ -10,6 +10,7 @@ async function showApp() {
 function showLogin() {
   $("app").classList.add("hidden");
   $("login").classList.remove("hidden");
+  renderApi(); // el aprendizaje de endpoints no necesita cuenta de MultiLote
 }
 
 const ACTION_ES = { publish: "publicar", delete: "retirar", update: "actualizar" };
