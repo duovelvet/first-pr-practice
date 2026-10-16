@@ -19,7 +19,7 @@ MLAdapters.register({
   loginPath: null, // p. ej. /\/(login|signin)/i — por confirmar
   dom: {
     publish: {
-      title: 'input[name="title"], input#title',
+      title: 'input[name="title"], input#title, input#summary, input[name="summary"]',
       description: 'textarea[name="description"], textarea#description',
       price: 'input[name="sale_price"], input#sale_price, input[name="price"]',
       photos: 'input[type="file"]',

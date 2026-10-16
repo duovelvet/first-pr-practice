@@ -35,6 +35,7 @@ function pageProbe() {
     heads: [...document.querySelectorAll("h1,h2,h3,[role=heading]")].slice(0, 8).map((h) => cut(h.textContent, 50)),
     iframes: [...document.querySelectorAll("iframe")].slice(0, 8).map((f) => { try { const u = new URL(f.src, location.href); return u.host + u.pathname.slice(0, 40); } catch { return "?"; } }),
     fileInputs: document.querySelectorAll("input[type=file]").length,
+    editable: document.querySelectorAll("[contenteditable=true],[role=textbox]").length,
     login: !!document.querySelector("input[type=password]"),
   };
 }
@@ -104,6 +105,11 @@ async function domPublish(adapter, data, confirm, selOverride) {
 
   const { listing, photos } = data;
   MLDom.setNativeValue(titleEl, listing.title);
+  // Formularios que van revelando campos (asistentes): con selectores propios del aprendizaje, espera a que salgan.
+  if (selOverride) {
+    await MLDom.waitFor(sel.description, 6000);
+    await MLDom.waitFor(sel.price, 4000);
+  }
   const desc = document.querySelector(sel.description);
   if (desc) MLDom.setNativeValue(desc, listing.description || "");
   const price = document.querySelector(sel.price);
@@ -112,7 +118,7 @@ async function domPublish(adapter, data, confirm, selOverride) {
   if (fileInput && photos.length) await MLDom.attachPhotos(fileInput, photos);
 
   const submit = document.querySelector(sel.submit);
-  if (!submit) throw new JobError("No se encontró el botón de publicar (selectores por ajustar)", { code: "selector" });
+  if (!submit) throw new JobError("No se encontró el botón de publicar (selectores por ajustar)", { code: "selector", diag: pageProbe() });
 
   // Antes de pulsar, escuchamos la llamada de creación de la propia web: da el id/URL reales del anuncio.
   const tap = confirm && (await MLBridge.whenReady(1500)) ? MLBridge.expectTap(confirm, 30000) : null;
