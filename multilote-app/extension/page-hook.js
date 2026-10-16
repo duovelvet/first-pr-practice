@@ -158,6 +158,17 @@
         if (recording && method !== "GET") {
           const ct = Object.keys(headers).find((k) => k.toLowerCase() === "content-type");
           rec = { req: snapshotBody(init && init.body, ct ? headers[ct] : ""), hasSession: hasSessionHeader(headers) };
+          // fetch(new Request(url, {body})): el cuerpo no va en `init`; se lee de una copia de la petición.
+          if (isReq && !(init && init.body)) {
+            const rct = input.headers.get("content-type") || "";
+            rec.bodyP = input.clone().arrayBuffer().then((buf) => {
+              try {
+                return snapshotBody(/multipart|octet|image|video/i.test(rct) ? new Blob([buf], { type: rct }) : new TextDecoder().decode(buf), rct);
+              } catch {
+                return rec.req;
+              }
+            }, () => rec.req);
+          }
         }
       }
     } catch {}
@@ -168,12 +179,12 @@
           if (rec) {
             const ct = res.headers.get("content-type") || "";
             const clone = res.clone();
-            (/json/i.test(ct) ? clone.text() : Promise.resolve("")).then((text) => {
+            Promise.all([/json/i.test(ct) ? clone.text() : Promise.resolve(""), rec.bodyP || Promise.resolve(rec.req)]).then(([text, reqSnap]) => {
               let json;
               try {
                 if (text && text.length <= JSON_CAP) json = scrub(JSON.parse(text));
               } catch {}
-              recordCall(meta, rec.req, rec.hasSession, { status: res.status, location: res.headers.get("location") || undefined, finalUrl: res.url || undefined, json });
+              recordCall(meta, reqSnap, rec.hasSession, { status: res.status, location: res.headers.get("location") || undefined, finalUrl: res.url || undefined, json });
             });
           }
           if (!taps.size) return; // un tap puede registrarse mientras la petición está en vuelo
@@ -186,6 +197,14 @@
   };
 
   // ---- XMLHttpRequest -------------------------------------------------------------------------------------
+  const xhrHeader = (x, name) => {
+    try {
+      const m = new RegExp("^" + name + ":\\s*(.+)$", "im").exec(x.getAllResponseHeaders() || "");
+      return m ? m[1].trim() : null;
+    } catch {
+      return null;
+    }
+  };
   const XP = XMLHttpRequest.prototype;
   const xOpen = XP.open, xSend = XP.send, xSet = XP.setRequestHeader;
   XP.open = function (method, url) {
@@ -210,19 +229,19 @@
       this.addEventListener("loadend", () => {
         try {
           if (rec) {
-            const ct = this.getResponseHeader("content-type") || "";
+            const ct = xhrHeader(this, "content-type") || "";
             let json;
             try {
               if (/json/i.test(ct) && (this.responseType === "" || this.responseType === "text") && this.responseText.length <= JSON_CAP) json = scrub(JSON.parse(this.responseText));
             } catch {}
-            recordCall({ ...m, t0: rec.t0 }, rec.req, rec.hasSession, { status: this.status, location: this.getResponseHeader("location") || undefined, finalUrl: this.responseURL || undefined, json });
+            recordCall({ ...m, t0: rec.t0 }, rec.req, rec.hasSession, { status: this.status, location: xhrHeader(this, "location") || undefined, finalUrl: this.responseURL || undefined, json });
           }
           if (!taps.size) return;
           onDone({
             method: m.method,
             url: m.url,
             status: this.status,
-            header: (n) => this.getResponseHeader(n),
+            header: (n) => xhrHeader(this, n),
             readText: async () => (this.responseType === "" || this.responseType === "text" ? this.responseText : JSON.stringify(this.response)),
           });
         } catch {}
