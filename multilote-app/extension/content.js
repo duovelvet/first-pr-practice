@@ -267,8 +267,19 @@ async function autolearn(adapter, data) {
   const base = adapter.dom.publish;
   const sel = { ...base, title: joinSel(base.title, LEARN_SEL.title), description: joinSel(base.description, LEARN_SEL.description), price: joinSel(base.price, LEARN_SEL.price) };
   const probes = JSON.parse(sessionStorage.getItem("mlProbes") || "[]");
-  if (!(await MLDom.waitFor(sel.title, 12000))) {
-    probes.push(pageProbe());
+  let found = await MLDom.waitFor(sel.title, 12000);
+  let clicked = null;
+  if (!found && base.start) {
+    // Asistente por pasos: pulsa la opción de inicio («Algo que ya no necesito») y espera a que salgan los campos.
+    const btn = [...document.querySelectorAll("button,[role=button],a,li,label")].find((b) => base.start.test(b.textContent || ""));
+    if (btn) {
+      clicked = String(btn.textContent).replace(/\s+/g, " ").trim().slice(0, 40);
+      btn.click();
+      found = await MLDom.waitFor(sel.title, 12000);
+    }
+  }
+  if (!found) {
+    probes.push({ ...pageProbe(), clicked });
     sessionStorage.setItem("mlProbes", JSON.stringify(probes.slice(-4)));
     if (!sessionStorage.getItem("mlHop")) {
       // El enlace más claro de «subir»: prioriza /upload en la ruta, luego el texto, y descarta la propia página.

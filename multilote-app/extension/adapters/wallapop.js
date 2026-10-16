@@ -24,6 +24,9 @@ MLAdapters.register({
       price: 'input[name="sale_price"], input#sale_price, input[name="price"]',
       photos: 'input[type="file"]',
       submit: 'button[type="submit"]',
+      // Primer paso del asistente de subida (visto en el diagnóstico real): hay que elegir qué se sube antes de que
+      // aparezcan los campos. Solo lo usa el aprendizaje automático.
+      start: /algo que ya no necesito/i,
     },
     delete: { ...MLDom.DEFAULT_DELETE },
   },
